@@ -1,21 +1,36 @@
-workflows:
-  android-apk:
-    name: Build Android APK
-    instance_type: linux_x2
+```yaml
+name: Android CI
 
-    environment:
-      java: 17
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
 
-    scripts:
-      - name: Build debug APK
-        script: |
-          chmod +x ./gradlew
-          ./gradlew assembleDebug
+jobs:
+  build:
+    runs-on: ubuntu-latest
 
-    artifacts:
-      - app/build/outputs/apk/debug/*.apk
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    publishing:
-      email:
-        recipients:
-          - YOUR_EMAIL@example.com
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Build Android APK
+        run: gradle assembleDebug --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
