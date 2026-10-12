@@ -42,6 +42,10 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Gavel
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Policy
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
@@ -51,6 +55,8 @@ import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -107,7 +113,10 @@ import com.example.ui.theme.VhoqxethSurface
 import com.example.ui.theme.VhoqxethSurfaceElevated
 import com.example.ui.theme.VhoqxethTextMuted
 import com.example.ui.theme.VhoqxethTextPrimary
+import com.example.model.LegalContent
 import com.example.model.UserProfile
+import com.example.ui.legal.AboutAppSheet
+import com.example.ui.legal.LegalViewerSheet
 import com.example.ui.theme.VhoqxethTextSecondary
 import kotlinx.coroutines.launch
 
@@ -150,9 +159,21 @@ fun ChatListScreen(
     var showNewChatSheet by remember { mutableStateOf(false) }
     val newChatSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
+    // Three-dot menu and legal modal states
+    var showMenuDropdown by remember { mutableStateOf(false) }
+    var showAboutAppSheet by remember { mutableStateOf(false) }
+    var showPrivacyPolicySheet by remember { mutableStateOf(false) }
+    var showTermsSheet by remember { mutableStateOf(false) }
+
     // Handle back button when search or sheets are active
-    BackHandler(enabled = isSearchActive || selectedThread != null || showNewChatSheet || showProfileSheet) {
+    BackHandler(
+        enabled = isSearchActive || selectedThread != null || showNewChatSheet ||
+            showProfileSheet || showAboutAppSheet || showPrivacyPolicySheet || showTermsSheet
+    ) {
         when {
+            showAboutAppSheet -> showAboutAppSheet = false
+            showPrivacyPolicySheet -> showPrivacyPolicySheet = false
+            showTermsSheet -> showTermsSheet = false
             selectedThread != null -> selectedThread = null
             showNewChatSheet -> showNewChatSheet = false
             showProfileSheet -> showProfileSheet = false
@@ -331,6 +352,103 @@ fun ChatListScreen(
                             contentDescription = "Search",
                             tint = VhoqxethTextPrimary
                         )
+                    }
+
+                    // Three-dot overflow menu (About the App, Privacy Policy, Terms & Conditions)
+                    Box {
+                        IconButton(
+                            onClick = { showMenuDropdown = true },
+                            modifier = Modifier.testTag("overflow_menu_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "More Options",
+                                tint = VhoqxethTextPrimary
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = showMenuDropdown,
+                            onDismissRequest = { showMenuDropdown = false },
+                            modifier = Modifier
+                                .background(VhoqxethSurfaceElevated)
+                                .border(1.dp, VhoqxethBorder, RoundedCornerShape(8.dp))
+                                .testTag("top_nav_overflow_dropdown")
+                        ) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = "About the App",
+                                        color = VhoqxethTextPrimary,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Info,
+                                        contentDescription = null,
+                                        tint = VhoqxethCyanAccent,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                },
+                                onClick = {
+                                    showMenuDropdown = false
+                                    showAboutAppSheet = true
+                                },
+                                modifier = Modifier.testTag("menu_item_about_app")
+                            )
+
+                            HorizontalDivider(color = VhoqxethBorder, thickness = 0.5.dp)
+
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = "Privacy Policy",
+                                        color = VhoqxethTextPrimary,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Normal
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Policy,
+                                        contentDescription = null,
+                                        tint = VhoqxethTextSecondary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                },
+                                onClick = {
+                                    showMenuDropdown = false
+                                    showPrivacyPolicySheet = true
+                                },
+                                modifier = Modifier.testTag("menu_item_privacy_policy")
+                            )
+
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = "Terms & Conditions",
+                                        color = VhoqxethTextPrimary,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Normal
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Gavel,
+                                        contentDescription = null,
+                                        tint = VhoqxethTextSecondary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                },
+                                onClick = {
+                                    showMenuDropdown = false
+                                    showTermsSheet = true
+                                },
+                                modifier = Modifier.testTag("menu_item_terms_conditions")
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
@@ -656,6 +774,33 @@ fun ChatListScreen(
                 }
             )
         }
+    }
+
+    // Modal Bottom Sheet: About the App (features listed, admin panel NOT listed)
+    if (showAboutAppSheet) {
+        AboutAppSheet(
+            onDismiss = { showAboutAppSheet = false }
+        )
+    }
+
+    // Modal Bottom Sheet: Privacy Policy
+    if (showPrivacyPolicySheet) {
+        LegalViewerSheet(
+            title = "Privacy Policy",
+            subtitle = "PROTOCOL DATA GOVERNANCE",
+            sections = LegalContent.privacyPolicySections,
+            onDismiss = { showPrivacyPolicySheet = false }
+        )
+    }
+
+    // Modal Bottom Sheet: Terms & Conditions
+    if (showTermsSheet) {
+        LegalViewerSheet(
+            title = "Terms & Conditions",
+            subtitle = "DECENTRALIZED PROTOCOL CHARTER",
+            sections = LegalContent.termsAndConditionsSections,
+            onDismiss = { showTermsSheet = false }
+        )
     }
 }
 

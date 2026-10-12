@@ -5,6 +5,7 @@ import com.google.firebase.firestore.FirebaseFirestoreException
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -84,6 +85,38 @@ class FirestoreRuleTest : FirestoreEmulatorTestBase() {
       assertEquals("alice_handle", snapshot.getString("customUserId"))
     } catch (e: Exception) {
       fail("Writing and reading user profile should succeed: ${e.message}")
+    }
+  }
+
+  @Test
+  fun deletionOfUserProfileAndRegisteredIpSucceeds(): Unit = runBlocking {
+    val userDoc = firestore.collection("users").document("del_user")
+    val ipDoc = firestore.collection("registered_ips").document("del_ip")
+
+    userDoc.set(
+      mapOf(
+        "userId" to "del_user",
+        "displayName" to "To Delete",
+        "customUserId" to "del_user"
+      )
+    ).await()
+
+    ipDoc.set(
+      mapOf(
+        "ip" to "10.0.0.1",
+        "userId" to "del_user",
+        "customUserId" to "del_user",
+        "displayName" to "To Delete"
+      )
+    ).await()
+
+    try {
+      userDoc.delete().await()
+      ipDoc.delete().await()
+      assertFalse(userDoc.get().await().exists())
+      assertFalse(ipDoc.get().await().exists())
+    } catch (e: Exception) {
+      fail("Deleting user profile and registered IP should succeed: ${e.message}")
     }
   }
 

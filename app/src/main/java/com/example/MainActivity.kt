@@ -24,6 +24,7 @@ import com.example.data.AuthRepository
 import com.example.data.DeviceIpManager
 import com.example.data.SessionManager
 import com.example.model.UserProfile
+import com.example.ui.admin.AdminPortalScreen
 import com.example.ui.auth.AuthGatewayScreen
 import com.example.ui.chat.ChatListScreen
 import com.example.ui.splash.SplashScreen
@@ -34,7 +35,8 @@ import kotlinx.coroutines.launch
 enum class AppScreen {
     SPLASH,
     AUTH,
-    CHAT_LIST
+    CHAT_LIST,
+    ADMIN_PORTAL
 }
 
 class MainActivity : ComponentActivity() {
@@ -108,6 +110,9 @@ fun VhoqxethApp() {
                         sessionManager.saveSession(profile)
                         currentUserProfile = profile
                         currentScreen = AppScreen.CHAT_LIST
+                    },
+                    onOpenAdminPortal = {
+                        currentScreen = AppScreen.ADMIN_PORTAL
                     }
                 )
             }
@@ -118,6 +123,17 @@ fun VhoqxethApp() {
                         sessionManager.clearSession()
                         currentUserProfile = null
                         currentScreen = AppScreen.AUTH
+                    }
+                )
+            }
+            AppScreen.ADMIN_PORTAL -> {
+                AdminPortalScreen(
+                    onExit = {
+                        currentScreen = if (sessionManager.isLoggedIn()) {
+                            AppScreen.CHAT_LIST
+                        } else {
+                            AppScreen.AUTH
+                        }
                     }
                 )
             }

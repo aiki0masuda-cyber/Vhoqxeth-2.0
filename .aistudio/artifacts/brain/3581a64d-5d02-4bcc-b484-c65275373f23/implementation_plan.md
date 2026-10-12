@@ -1,25 +1,26 @@
-# Local Session Persistence & First-Run Login Gating
+# Legal Consent Onboarding & Top Navigation Menu
 
-Implementation plan to store authentication and login state locally, ensuring the login/signup screen only appears on the first run, followed by seamless direct entry into chats on subsequent launches.
+Implementation plan for adding a top navigation bar with a three-dot overflow menu ("About the App", "Privacy Policy", "Terms & Conditions") and a first-boot tabbed consent onboarding screen before login or signup.
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> The following user preferences have been confirmed via Phase 1 clarification:
-> - **Subsequent Launch Behavior**: Brief splash screen followed by instant opening of the chat screen using locally persisted credentials.
-> - **Sign-Out Behavior**: Explicitly clears the local login session and returns to the login/signup gateway screen.
+> The following requirements have been confirmed via Phase 1 clarification:
+> - **First-Boot Policy Display**: On the first launch, the app presents an onboarding consent screen with tabs for **Privacy Policy** and **Terms & Conditions** before revealing the login/signup gateway.
+> - **Top Bar Three-Dot Menu**: The top navbar includes a three-dot menu containing "About the App", "Privacy Policy", and "Terms & Conditions".
+> - **Admin Stealth Rule**: "About the App" strictly highlights user-facing features (quantum encryption, IP identity, peer-to-peer messaging) and **must not list or disclose** the admin panel or masterkey.
 
-- **Confirmed Decision 1**: Store session data (login state, Display Name, Custom User ID, and linked IP history) locally using Android's persistent preferences via a dedicated `SessionManager`.
-- **Confirmed Decision 2**: During splash boot, check local session state. If logged in, load the cached user profile and transition directly to `ChatListScreen` without prompting for login or signup.
-- **Confirmed Decision 3**: Provide robust error recovery during IP detection and Firestore synchronization so network hiccups never lock the user out.
+- **Confirmed Decision 1**: Store `hasAcceptedTerms` locally in `SessionManager` so the introductory consent screen only appears on the very first boot.
+- **Confirmed Decision 2**: Provide full-screen modal sheets with formatted sections when menu items ("About the App", "Privacy Policy", "Terms & Conditions") are selected from the three-dot menu.
+- **Confirmed Decision 3**: Retain the hidden 7-tap gesture on the IP pill with `P@ssw0rd` masterkey for the Admin Portal without leaking its existence in any public copy.
 
 ---
 
 ## 1. Overview & Core Concept
 
-- **What It Does**: Persists user session state on the device. On the very first launch, the app prompts the user to create an account or log in via IP address and custom handle. Once authenticated, the login/signup screen never reappears on subsequent launches; instead, the app displays a brief splash screen and immediately opens the chat experience.
-- **Target Audience / Persona**: Users seeking a streamlined, frictionless messaging client that remembers their device identity and launches directly into active conversations.
-- **Key Value**: Eliminates repetitive login screens, reduces cold-start latency, and provides reliable local session control with explicit sign-out support.
+- **What It Does**: Introduces a compliance and informational layer to Vhoqxeth. First-time users review and accept the Privacy Policy and Terms of Service via a clean, tabbed interface before proceeding to IP detection and account creation. The auth gateway now features a top navigation bar with a three-dot overflow menu allowing users to inspect app features, privacy commitments, and terms at any time.
+- **Target Audience / Persona**: Users who value transparency regarding data handling and cryptography before entering their device identity.
+- **Key Value**: Provides clear regulatory compliance, user transparency, and quick feature discovery while keeping administrative controls entirely unadvertised.
 
 ---
 
@@ -27,84 +28,86 @@ Implementation plan to store authentication and login state locally, ensuring th
 
 ### Key User Flows
 
-1. **First-Run Launch (Zero State)**:
-   - App boots with animated splash screen.
-   - Detects `isLoggedIn == false`.
-   - Transitions into `AuthGatewayScreen` showing the detected device IP with options to "Create Account" or "Log In with Custom User ID".
-   - User completes registration or logs in; session is saved locally (`isLoggedIn = true`, credentials cached).
-   - Seamlessly navigates to `ChatListScreen`.
-2. **Subsequent Launches (Logged-In State)**:
-   - App boots with a brief quantum pulse splash animation (~1.2 seconds).
-   - Detects `isLoggedIn == true` from local storage.
-   - Instantly navigates to `ChatListScreen` with cached user profile loaded.
-   - Quietly verifies and updates IP network coordinates in the background.
-3. **Sign-Out Flow**:
-   - User opens the Profile Sheet from the top-left avatar in `ChatListScreen`.
-   - Taps "Sign Out / Switch Identity".
-   - Clears local session cache (`isLoggedIn = false`, cleared preferences).
-   - Navigates back to `AuthGatewayScreen`.
+1. **First-Boot Legal Onboarding**:
+   - App launches splash screen.
+   - If not logged in and `hasAcceptedTerms == false`:
+   - Transitions to `LegalConsentScreen` displaying:
+     - Header: "Vhoqxeth Network Protocol Governance".
+     - Tab row: **Privacy Policy** | **Terms & Conditions**.
+     - Scrollable rich text explaining zero-telemetry policies, decentralized storage, and usage obligations.
+     - Bottom pinned action: "Accept & Continue" button (disabled until tab viewed, or immediately enabled with clear consent).
+     - Once accepted, sets `hasAcceptedTerms = true` in `SessionManager` and transitions to `AuthGatewayScreen`.
+2. **Auth Gateway Navbar & Three-Dot Overflow Menu**:
+   - Top bar contains:
+     - Left: Brand mark with encrypted enclave badge.
+     - Right: Three-dot overflow menu button (`MoreVert` icon).
+   - Tapping the icon opens the dropdown menu with:
+     - ℹ️ **About the App**: Opens modal dialog/sheet showcasing core features:
+       - Quantum-grade end-to-end messaging encryption.
+       - Zero-trust device IP routing & roaming support.
+       - Decentralized ephemeral message channels.
+       - Cross-device profile synchronization.
+       - *(Explicitly omits any mention of admin console or masterkey).*
+     - 🛡️ **Privacy Policy**: Opens full Privacy Policy sheet.
+     - 📜 **Terms & Conditions**: Opens full Terms & Conditions sheet.
+3. **Subsequent Boots**:
+   - If already logged in, splash screen immediately opens `ChatListScreen` as before.
+   - If logged out, directly opens `AuthGatewayScreen` (skipping the legal onboarding since terms were previously accepted).
 
 ### Visual Identity & Theme
-- Maintains the obsidian dark theme (`#0D0B14`), neon violet (`#7C4DFF`), and quantum cyan (`#00E5FF`) visual language.
-- Animated transition between Splash and Chat screens with smooth fade-in/fade-out physics.
-- Clear, descriptive inline error banners with retry buttons on network or database validation failures.
+- Consistent with the Vhoqxeth cyberpunk dark theme (`#0D0B14`, `#7C4DFF`, `#00E5FF`, `#1B1829`).
+- Custom styling for dropdown menu and legal tabs with subtle neon indicators and clean typography.
 
 ---
 
 ## 3. Key Product Decisions & Trade-Offs
 
-- **Decision 1: Local Session Storage via `SessionManager`**
-  - *Chosen Approach*: Persist login state, user ID, custom handle, display name, and last known IP using Android `SharedPreferences`.
-  - *Why*: Synchronous zero-latency reads at application boot without asynchronous initialization locks or SQLite migrations.
-  - *Alternatives Considered*: Pure in-memory state forces re-login on every app restart; heavy Room database for 4 key-value fields adds unnecessary overhead.
-- **Decision 2: Background IP Synchronization for Returning Users**
-  - *Chosen Approach*: When launching directly into chats from a saved session, the app resolves the current IP in the background and links it to the profile if changed.
-  - *Why*: Prevents network calls from delaying the instant chat UI launch while keeping database IP associations up-to-date across Wi-Fi/mobile roaming.
-- **Decision 3: Hardened Error Recovery in Auth Flows**
-  - *Chosen Approach*: Wrap all IP lookups and Firestore document writes in explicit retry and error-handling blocks with friendly error banners and fallback device IDs.
-  - *Why*: Prevents app freezes or blank states if the public IP lookup times out or if Firestore encounters transient network latency.
+- **Decision 1: Persistence of Acceptance State in `SessionManager`**
+  - *Chosen Approach*: Add `hasAcceptedTerms(): Boolean` and `setAcceptedTerms(true)` to `SessionManager`.
+  - *Why*: Synchronous zero-latency check during splash boot; does not block the app launch.
+- **Decision 2: Comprehensive Legal Content Formatting**
+  - *Chosen Approach*: Store structured legal copy in a dedicated `LegalContent.kt` object with clean markdown-like card sections for readability.
+  - *Why*: Separates legal text from UI composables, making updates straightforward and readable.
+- **Decision 3: Stealth Admin Preservation**
+  - *Chosen Approach*: The three-dot menu and "About the App" dialog strictly contain user-facing product information. The 7-tap gesture on the IP pill remains the exclusive trigger for the Admin Portal.
+  - *Why*: Directly honors the user's explicit instruction: *"admin panels is not listed"*.
 
 ---
 
 ## 4. Technical Architecture & Data Strategy
 
-### Architecture & Component Diagram
+### Component Architecture
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │                              MainActivity                              │
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │
-               ┌────────────────────┴───────────────────┐
-               ▼                                        ▼
-   ┌───────────────────────┐               ┌─────────────────────────┐
-   │     SplashScreen      │               │     SessionManager      │
-   │  (Checks Session)     │──────────────▶│  - isLoggedIn()         │
-   └───────────┬───────────┘               │  - getSavedProfile()    │
-               │                           │  - saveSession()        │
-               │                           │  - clearSession()       │
-               ├─────────────────────────┐ └─────────────────────────┘
-               ▼                         ▼
-   ┌────────────────────────┐┌────────────────────────┐
-   │   AuthGatewayScreen    ││     ChatListScreen     │
-   │  (First Run / Logged   ││   (Subsequent Launches │
-   │   Out State)           ││    Direct Entry)       │
-   └───────────┬────────────┘└───────────┬────────────┘
-               │                         │
-               ▼ (on register/login)     ▼ (on sign out)
-       saveSession(profile)         clearSession()
+               ┌────────────────────┼────────────────────┐
+               ▼                    ▼                    ▼
+   ┌───────────────────────┐ ┌──────────────┐ ┌─────────────────────────┐
+   │     SplashScreen      │ │ChatListScreen│ │   LegalConsentScreen    │
+   │  - isLoggedIn?        │ └──────────────┘ │   (First-boot only)     │
+   │  - hasAcceptedTerms?  │                  └───────────┬─────────────┘
+   └───────────┬───────────┘                              │ (Accept)
+               │                                          ▼
+               │                              ┌─────────────────────────┐
+               └─────────────────────────────▶│    AuthGatewayScreen    │
+                                              │ - Top Navbar            │
+                                              │ - 3-Dot Overflow Menu   │
+                                              │   ├─ About App Sheet    │
+                                              │   ├─ Privacy Sheet      │
+                                              │   └─ Terms Sheet        │
+                                              │ - 7-Tap IP Admin Portal │
+                                              └─────────────────────────┘
 ```
 
-### Data Storage & Schema
+### Data Layer Specifications
 
-1. **Local Preferences (`vhoqxeth_session`)**:
-   - `KEY_IS_LOGGED_IN`: Boolean
-   - `KEY_USER_ID`: String (Custom handle)
-   - `KEY_CUSTOM_USER_ID`: String
-   - `KEY_DISPLAY_NAME`: String
-   - `KEY_CURRENT_IP`: String
-   - `KEY_ASSOCIATED_IPS`: Set<String>
-2. **Error Handling Matrix**:
-   - IP lookup failure -> Uses `DEV-<android_id>` fallback, does not block registration.
-   - Duplicate custom handle during registration -> Gracefully prompts to choose another handle or log in.
-   - Unfound custom handle during IP linking -> Displays "Custom user ID not found, please check handle or create account".
+- **`SessionManager` Extensions**:
+  - `hasAcceptedTerms(): Boolean`
+  - `setAcceptedTerms(accepted: Boolean)`
+- **`LegalContent`**:
+  - `aboutAppFeatures: List<FeatureItem>`
+  - `privacyPolicySections: List<LegalSection>`
+  - `termsAndConditionsSections: List<LegalSection>`

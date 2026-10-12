@@ -46,16 +46,18 @@ service cloud.firestore {
       allow write: if isValidProbe(request.resource.data);
     }
 
-    // Registered IP index for IP-only device recognition
+    // Registered IP index for IP-only device recognition & admin deletion
     match /registered_ips/{ipKey} {
       allow read: if true;
-      allow write: if isValidRegisteredIp(request.resource.data);
+      allow create, update: if isValidRegisteredIp(request.resource.data);
+      allow delete: if true;
     }
 
-    // User account profiles identified by custom user ID
+    // User account profiles identified by custom user ID & admin deletion
     match /users/{userId} {
       allow read: if true;
-      allow write: if isValidUser(request.resource.data, userId);
+      allow create, update: if isValidUser(request.resource.data, userId);
+      allow delete: if true;
 
       match /threads/{threadId} {
         allow read, write: if isValidThread(request.resource.data, userId);

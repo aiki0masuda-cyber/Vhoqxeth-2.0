@@ -86,6 +86,25 @@ import com.example.ui.theme.VhoqxethTextPrimary
 import com.example.ui.theme.VhoqxethTextSecondary
 import kotlinx.coroutines.launch
 
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.filled.Gavel
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Policy
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.VpnKey
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import com.example.model.LegalContent
+import com.example.ui.legal.AboutAppSheet
+import com.example.ui.legal.LegalViewerSheet
+
 sealed class AuthScreenStep {
     object Checking : AuthScreenStep()
     data class Recognized(val ip: String, val entry: RegisteredIpEntry) : AuthScreenStep()
@@ -97,6 +116,7 @@ sealed class AuthScreenStep {
 @Composable
 fun AuthGatewayScreen(
     onAuthenticated: (UserProfile) -> Unit,
+    onOpenAdminPortal: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -108,6 +128,15 @@ fun AuthGatewayScreen(
     var detectedIp by remember { mutableStateOf<String?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
+
+    var ipTapCount by remember { mutableIntStateOf(0) }
+    var lastTapTimestamp by remember { mutableLongStateOf(0L) }
+    var showMasterKeyDialog by remember { mutableStateOf(false) }
+
+    var menuExpanded by remember { mutableStateOf(false) }
+    var showAboutSheet by remember { mutableStateOf(false) }
+    var showPrivacySheet by remember { mutableStateOf(false) }
+    var showTermsSheet by remember { mutableStateOf(false) }
 
     fun checkDeviceAndAuth() {
         isLoading = true
@@ -155,7 +184,114 @@ fun AuthGatewayScreen(
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.height(28.dp))
+            // Top Navigation Bar with Overflow Menu
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp, bottom = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(
+                                Brush.linearGradient(listOf(VhoqxethPrimaryViolet, VhoqxethCyanAccent))
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Vhoqxeth Mesh",
+                        color = VhoqxethTextSecondary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 0.5.sp
+                    )
+                }
+
+                Box {
+                    IconButton(
+                        onClick = { menuExpanded = true },
+                        modifier = Modifier.testTag("auth_overflow_menu_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = "Menu Options",
+                            tint = VhoqxethCyanAccent
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = menuExpanded,
+                        onDismissRequest = { menuExpanded = false },
+                        containerColor = VhoqxethSurfaceElevated,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, VhoqxethBorder)
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("About the app", color = VhoqxethTextPrimary, fontSize = 13.sp) },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Info,
+                                    contentDescription = null,
+                                    tint = VhoqxethCyanAccent,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            },
+                            onClick = {
+                                menuExpanded = false
+                                showAboutSheet = true
+                            },
+                            modifier = Modifier.testTag("menu_about_app")
+                        )
+                        HorizontalDivider(color = VhoqxethBorder, thickness = 0.5.dp)
+                        DropdownMenuItem(
+                            text = { Text("Privacy Policy", color = VhoqxethTextPrimary, fontSize = 13.sp) },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Policy,
+                                    contentDescription = null,
+                                    tint = VhoqxethCyanAccent,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            },
+                            onClick = {
+                                menuExpanded = false
+                                showPrivacySheet = true
+                            },
+                            modifier = Modifier.testTag("menu_privacy_policy")
+                        )
+                        HorizontalDivider(color = VhoqxethBorder, thickness = 0.5.dp)
+                        DropdownMenuItem(
+                            text = { Text("Terms & Conditions", color = VhoqxethTextPrimary, fontSize = 13.sp) },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Gavel,
+                                    contentDescription = null,
+                                    tint = VhoqxethCyanAccent,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            },
+                            onClick = {
+                                menuExpanded = false
+                                showTermsSheet = true
+                            },
+                            modifier = Modifier.testTag("menu_terms_conditions")
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
 
             // Branding Header
             Box(
@@ -200,13 +336,25 @@ fun AuthGatewayScreen(
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            // IP Status Banner
+            // IP Status Banner with 7-tap Masterkey gesture
             detectedIp?.let { ip ->
                 Row(
                     modifier = Modifier
                         .clip(RoundedCornerShape(20.dp))
                         .background(VhoqxethSurface)
                         .border(1.dp, VhoqxethBorder, RoundedCornerShape(20.dp))
+                        .clickable {
+                            val now = System.currentTimeMillis()
+                            if (now - lastTapTimestamp > 3000L) {
+                                ipTapCount = 0
+                            }
+                            lastTapTimestamp = now
+                            ipTapCount++
+                            if (ipTapCount >= 7) {
+                                ipTapCount = 0
+                                showMasterKeyDialog = true
+                            }
+                        }
                         .padding(horizontal = 14.dp, vertical = 6.dp)
                         .testTag("detected_ip_pill"),
                     verticalAlignment = Alignment.CenterVertically
@@ -371,6 +519,38 @@ fun AuthGatewayScreen(
             }
 
             Spacer(modifier = Modifier.height(32.dp))
+        }
+
+        if (showMasterKeyDialog) {
+            MasterKeyOverrideDialog(
+                onDismiss = { showMasterKeyDialog = false },
+                onSuccess = {
+                    showMasterKeyDialog = false
+                    onOpenAdminPortal()
+                }
+            )
+        }
+
+        if (showAboutSheet) {
+            AboutAppSheet(onDismiss = { showAboutSheet = false })
+        }
+
+        if (showPrivacySheet) {
+            LegalViewerSheet(
+                title = "Privacy Policy",
+                subtitle = "ZERO-KNOWLEDGE COMMITMENT",
+                sections = LegalContent.privacyPolicySections,
+                onDismiss = { showPrivacySheet = false }
+            )
+        }
+
+        if (showTermsSheet) {
+            LegalViewerSheet(
+                title = "Terms & Conditions",
+                subtitle = "NETWORK PROTOCOL USAGE RULES",
+                sections = LegalContent.termsAndConditionsSections,
+                onDismiss = { showTermsSheet = false }
+            )
         }
     }
 }
@@ -1010,4 +1190,109 @@ private fun LinkExistingContent(
             }
         }
     }
+}
+
+@Composable
+fun MasterKeyOverrideDialog(
+    onDismiss: () -> Unit,
+    onSuccess: () -> Unit
+) {
+    var password by remember { mutableStateOf("") }
+    var passwordVisible by remember { mutableStateOf(false) }
+    var isError by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color(0xFF14121E),
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.VpnKey,
+                    contentDescription = null,
+                    tint = Color(0xFFFFB300),
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "MASTER ENCLAVE OVERRIDE",
+                    color = Color(0xFFFFB300),
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp
+                )
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Enter masterkey to unlock the Administrative Database Console with root privileges:",
+                    color = VhoqxethTextSecondary,
+                    fontSize = 12.sp
+                )
+
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = {
+                        password = it
+                        isError = false
+                    },
+                    placeholder = { Text("Masterkey...", color = VhoqxethTextMuted) },
+                    singleLine = true,
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(
+                                imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                contentDescription = "Toggle password visibility",
+                                tint = VhoqxethCyanAccent
+                            )
+                        }
+                    },
+                    isError = isError,
+                    supportingText = {
+                        if (isError) {
+                            Text(
+                                text = "INVALID MASTERKEY • ACCESS DENIED",
+                                color = Color(0xFFFF5252),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("admin_masterkey_input"),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color(0xFF1B1829),
+                        unfocusedContainerColor = Color(0xFF1B1829),
+                        focusedBorderColor = Color(0xFFFFB300),
+                        unfocusedBorderColor = VhoqxethBorder,
+                        focusedTextColor = VhoqxethTextPrimary,
+                        unfocusedTextColor = VhoqxethTextPrimary
+                    )
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (password == "P@ssw0rd") {
+                        onSuccess()
+                    } else {
+                        isError = true
+                    }
+                },
+                modifier = Modifier.testTag("submit_masterkey_button"),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFB300))
+            ) {
+                Text("Authorize Access", color = Color.Black, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = onDismiss) {
+                Text("Cancel", color = VhoqxethTextSecondary)
+            }
+        }
+    )
 }
