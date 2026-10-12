@@ -1,0 +1,261 @@
+package com.example.data
+
+import com.example.model.ActiveContact
+import com.example.model.ConversationCategory
+import com.example.model.ConversationThread
+import com.example.model.MessageStatus
+import com.example.model.SnippetType
+
+object DummyData {
+    val activeContacts = listOf(
+        ActiveContact(
+            id = "c1",
+            name = "Aria Vance",
+            initials = "AV",
+            isOnline = true,
+            hasStory = true,
+            colorStart = 0xFFA855F7,
+            colorEnd = 0xFFEC4899
+        ),
+        ActiveContact(
+            id = "c2",
+            name = "Kaelen Voss",
+            initials = "KV",
+            isOnline = true,
+            hasStory = true,
+            colorStart = 0xFF06D6A0,
+            colorEnd = 0xFF0EA5E9
+        ),
+        ActiveContact(
+            id = "c3",
+            name = "Nova Ops",
+            initials = "NO",
+            isOnline = false,
+            hasStory = false,
+            colorStart = 0xFFF59E0B,
+            colorEnd = 0xFFEF4444
+        ),
+        ActiveContact(
+            id = "c4",
+            name = "Lyra Cross",
+            initials = "LC",
+            isOnline = true,
+            hasStory = true,
+            colorStart = 0xFF8B5CF6,
+            colorEnd = 0xFF3B82F6
+        ),
+        ActiveContact(
+            id = "c5",
+            name = "Dr. Helena",
+            initials = "DH",
+            isOnline = false,
+            hasStory = true,
+            colorStart = 0xFF10B981,
+            colorEnd = 0xFF14B8A6
+        ),
+        ActiveContact(
+            id = "c6",
+            name = "Zane Thorne",
+            initials = "ZT",
+            isOnline = true,
+            hasStory = false,
+            colorStart = 0xFF6366F1,
+            colorEnd = 0xFFA855F7
+        ),
+        ActiveContact(
+            id = "c7",
+            name = "Seraph-7",
+            initials = "S7",
+            isOnline = true,
+            hasStory = false,
+            colorStart = 0xFF06B6D4,
+            colorEnd = 0xFF3B82F6
+        )
+    )
+
+    val placeholderThreads = listOf(
+        ConversationThread(
+            id = "t1",
+            name = "Aria Vance",
+            lastMessage = "Sent the encrypted blueprint payload. Let me know once decrypted.",
+            timestamp = "12:42 PM",
+            unreadCount = 2,
+            isOnline = true,
+            isPinned = true,
+            isMuted = false,
+            isVerified = true,
+            isGroup = false,
+            category = ConversationCategory.DIRECT,
+            avatarInitials = "AV",
+            avatarColorStart = 0xFFA855F7,
+            avatarColorEnd = 0xFFEC4899,
+            messageStatus = MessageStatus.DELIVERED,
+            snippetType = SnippetType.TEXT
+        ),
+        ConversationThread(
+            id = "t2",
+            name = "Nexus Core Ops",
+            lastMessage = "Marcus: All cluster nodes synchronized for release.",
+            timestamp = "12:15 PM",
+            unreadCount = 5,
+            isOnline = true,
+            isPinned = true,
+            isMuted = false,
+            isVerified = true,
+            isGroup = true,
+            category = ConversationCategory.GROUP,
+            avatarInitials = "NC",
+            avatarColorStart = 0xFF6366F1,
+            avatarColorEnd = 0xFF8B5CF6,
+            lastSenderName = "Marcus",
+            messageStatus = MessageStatus.DELIVERED,
+            snippetType = SnippetType.TEXT
+        ),
+        ConversationThread(
+            id = "t3",
+            name = "Kaelen Voss",
+            lastMessage = "Are we meeting at the secure link at 14:00?",
+            timestamp = "11:30 AM",
+            unreadCount = 1,
+            isOnline = true,
+            isPinned = false,
+            isMuted = false,
+            isVerified = false,
+            isGroup = false,
+            category = ConversationCategory.DIRECT,
+            avatarInitials = "KV",
+            avatarColorStart = 0xFF06D6A0,
+            avatarColorEnd = 0xFF0EA5E9,
+            messageStatus = MessageStatus.READ,
+            snippetType = SnippetType.TEXT
+        ),
+        ConversationThread(
+            id = "t4",
+            name = "Lyra Cross",
+            lastMessage = "Audio dispatch (0:42)",
+            timestamp = "10:05 AM",
+            unreadCount = 0,
+            isOnline = true,
+            isPinned = false,
+            isMuted = false,
+            isVerified = false,
+            isGroup = false,
+            category = ConversationCategory.DIRECT,
+            avatarInitials = "LC",
+            avatarColorStart = 0xFF8B5CF6,
+            avatarColorEnd = 0xFF3B82F6,
+            messageStatus = MessageStatus.READ,
+            snippetType = SnippetType.AUDIO
+        ),
+        ConversationThread(
+            id = "t5",
+            name = "Quantum Labs Security",
+            lastMessage = "Security bulletin: Protocol v4.2 verification completed successfully.",
+            timestamp = "09:18 AM",
+            unreadCount = 0,
+            isOnline = false,
+            isPinned = false,
+            isMuted = false,
+            isVerified = true,
+            isGroup = false,
+            category = ConversationCategory.CHANNEL,
+            avatarInitials = "QL",
+            avatarColorStart = 0xFF10B981,
+            avatarColorEnd = 0xFF059669,
+            messageStatus = MessageStatus.READ,
+            snippetType = SnippetType.SYSTEM
+        ),
+        ConversationThread(
+            id = "t6",
+            name = "Zane Thorne",
+            lastMessage = "Transmitted telemetry log photo",
+            timestamp = "Yesterday",
+            unreadCount = 0,
+            isOnline = false,
+            isPinned = false,
+            isMuted = true,
+            isVerified = false,
+            isGroup = false,
+            category = ConversationCategory.DIRECT,
+            avatarInitials = "ZT",
+            avatarColorStart = 0xFFF59E0B,
+            avatarColorEnd = 0xFFEF4444,
+            messageStatus = MessageStatus.READ,
+            snippetType = SnippetType.IMAGE
+        ),
+        ConversationThread(
+            id = "t7",
+            name = "Dr. Helena Vance",
+            lastMessage = "The quantum key exchange test passed seamlessly.",
+            timestamp = "Yesterday",
+            unreadCount = 0,
+            isOnline = false,
+            isPinned = false,
+            isMuted = false,
+            isVerified = true,
+            isGroup = false,
+            category = ConversationCategory.DIRECT,
+            avatarInitials = "HV",
+            avatarColorStart = 0xFFEC4899,
+            avatarColorEnd = 0xFFF43F5E,
+            messageStatus = MessageStatus.SENT,
+            snippetType = SnippetType.TEXT
+        ),
+        ConversationThread(
+            id = "t8",
+            name = "Cybernetics Syndicate",
+            lastMessage = "Elena: Check the latest dispatch in the archive.",
+            timestamp = "Oct 7",
+            unreadCount = 0,
+            isOnline = false,
+            isPinned = false,
+            isMuted = true,
+            isVerified = false,
+            isGroup = true,
+            category = ConversationCategory.GROUP,
+            avatarInitials = "CS",
+            avatarColorStart = 0xFF3B82F6,
+            avatarColorEnd = 0xFF1D4ED8,
+            lastSenderName = "Elena",
+            messageStatus = MessageStatus.READ,
+            snippetType = SnippetType.TEXT
+        ),
+        ConversationThread(
+            id = "t9",
+            name = "Seraph-7 Autonomous Bot",
+            lastMessage = "Daily sync report: 0 packet anomalies detected.",
+            timestamp = "Oct 6",
+            unreadCount = 0,
+            isOnline = true,
+            isPinned = false,
+            isMuted = false,
+            isVerified = true,
+            isGroup = false,
+            category = ConversationCategory.CHANNEL,
+            avatarInitials = "S7",
+            avatarColorStart = 0xFF06B6D4,
+            avatarColorEnd = 0xFF3B82F6,
+            messageStatus = MessageStatus.READ,
+            snippetType = SnippetType.SYSTEM
+        ),
+        ConversationThread(
+            id = "t10",
+            name = "Orion Project Team",
+            lastMessage = "Kai: Meeting rescheduled to 16:30 UTC.",
+            timestamp = "Oct 5",
+            unreadCount = 0,
+            isOnline = false,
+            isPinned = false,
+            isMuted = false,
+            isVerified = false,
+            isGroup = true,
+            category = ConversationCategory.GROUP,
+            avatarInitials = "OP",
+            avatarColorStart = 0xFF8B5CF6,
+            avatarColorEnd = 0xFFD946EF,
+            lastSenderName = "Kai",
+            messageStatus = MessageStatus.READ,
+            snippetType = SnippetType.TEXT
+        )
+    )
+}

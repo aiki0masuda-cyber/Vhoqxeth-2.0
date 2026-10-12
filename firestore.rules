@@ -1,0 +1,65 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isValidProbe(data) {
+      return ('status' in data)
+        && ('databaseId' in data)
+        && ('clientApp' in data)
+        && data.status is string
+        && data.databaseId is string
+        && data.clientApp is string;
+    }
+
+    function isValidRegisteredIp(data) {
+      return ('ip' in data)
+        && ('userId' in data)
+        && ('customUserId' in data)
+        && ('displayName' in data)
+        && data.ip is string
+        && data.userId is string
+        && data.customUserId is string
+        && data.displayName is string;
+    }
+
+    function isValidUser(data, userId) {
+      return ('userId' in data)
+        && ('displayName' in data)
+        && ('customUserId' in data)
+        && data.userId == userId
+        && data.displayName is string
+        && data.customUserId is string;
+    }
+
+    function isValidThread(data, userId) {
+      return ('threadId' in data)
+        && ('creatorId' in data)
+        && ('title' in data)
+        && data.creatorId == userId
+        && data.threadId is string
+        && data.title is string;
+    }
+
+    // Connection probe endpoint for connectivity verification
+    match /connection_probes/{probeId} {
+      allow read: if true;
+      allow write: if isValidProbe(request.resource.data);
+    }
+
+    // Registered IP index for IP-only device recognition
+    match /registered_ips/{ipKey} {
+      allow read: if true;
+      allow write: if isValidRegisteredIp(request.resource.data);
+    }
+
+    // User account profiles identified by custom user ID
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if isValidUser(request.resource.data, userId);
+
+      match /threads/{threadId} {
+        allow read, write: if isValidThread(request.resource.data, userId);
+      }
+    }
+  }
+}

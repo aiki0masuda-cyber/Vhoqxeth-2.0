@@ -1,0 +1,138 @@
+{
+  "entities": {
+    "ConnectionProbe": {
+      "title": "ConnectionProbe",
+      "description": "Heartbeat and verification probe confirming connectivity to the Firestore database",
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "description": "Status of the connection probe"
+        },
+        "databaseId": {
+          "type": "string",
+          "description": "Target database identifier"
+        },
+        "clientApp": {
+          "type": "string",
+          "description": "App identity pinging the database"
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "ISO timestamp of the probe request"
+        }
+      },
+      "required": ["status", "databaseId", "clientApp"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with display name, custom user ID handle, and associated IP addresses",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Unique Google user ID"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Display name of the user"
+        },
+        "customUserId": {
+          "type": "string",
+          "description": "Custom alphanumeric user handle"
+        },
+        "associatedIps": {
+          "type": "array",
+          "description": "List of IP addresses linked to this account"
+        },
+        "currentIp": {
+          "type": "string",
+          "description": "Most recently active IP address"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Registration ISO timestamp"
+        }
+      },
+      "required": ["userId", "displayName", "customUserId"]
+    },
+    "RegisteredIpEntry": {
+      "title": "RegisteredIpEntry",
+      "description": "Fast lookup mapping an IP address to registered user identity",
+      "type": "object",
+      "properties": {
+        "ip": {
+          "type": "string",
+          "description": "Registered public or device IP address"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Associated user account Google UID"
+        },
+        "customUserId": {
+          "type": "string",
+          "description": "Associated user custom handle"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Associated user display name"
+        },
+        "registeredAt": {
+          "type": "string",
+          "description": "Timestamp when IP was linked"
+        }
+      },
+      "required": ["ip", "userId", "customUserId", "displayName"]
+    },
+    "ChatThread": {
+      "title": "ChatThread",
+      "description": "Encrypted conversation thread metadata",
+      "type": "object",
+      "properties": {
+        "threadId": {
+          "type": "string",
+          "description": "Unique identifier of the conversation thread"
+        },
+        "creatorId": {
+          "type": "string",
+          "description": "User ID of creator"
+        },
+        "title": {
+          "type": "string",
+          "description": "Conversation title"
+        },
+        "lastMessage": {
+          "type": "string",
+          "description": "Last sent preview snippet"
+        }
+      },
+      "required": ["threadId", "creatorId", "title"]
+    }
+  },
+  "firestore": {
+    "/connection_probes/{probeId}": {
+      "schema": {
+        "$ref": "#/entities/ConnectionProbe"
+      },
+      "description": "Collection of system connectivity validation probes"
+    },
+    "/registered_ips/{ipKey}": {
+      "schema": {
+        "$ref": "#/entities/RegisteredIpEntry"
+      },
+      "description": "Global index mapping detected IP addresses to registered user identities"
+    },
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserProfile"
+      },
+      "description": "User account profiles"
+    },
+    "/users/{userId}/threads/{threadId}": {
+      "schema": {
+        "$ref": "#/entities/ChatThread"
+      },
+      "description": "User conversation threads"
+    }
+  }
+}
