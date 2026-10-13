@@ -31,7 +31,7 @@
       "properties": {
         "userId": {
           "type": "string",
-          "description": "Unique Google user ID"
+          "description": "Unique user handle / ID"
         },
         "displayName": {
           "type": "string",
@@ -56,6 +56,30 @@
       },
       "required": ["userId", "displayName", "customUserId"]
     },
+    "UserContact": {
+      "title": "UserContact",
+      "description": "Saved contact entry in user roster",
+      "type": "object",
+      "properties": {
+        "contactUserId": {
+          "type": "string",
+          "description": "User ID of the added contact"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Display name of the contact"
+        },
+        "currentIp": {
+          "type": "string",
+          "description": "Last known IP address"
+        },
+        "addedAt": {
+          "type": "string",
+          "description": "Timestamp when added"
+        }
+      },
+      "required": ["contactUserId", "displayName"]
+    },
     "RegisteredIpEntry": {
       "title": "RegisteredIpEntry",
       "description": "Fast lookup mapping an IP address to registered user identity",
@@ -67,7 +91,7 @@
         },
         "userId": {
           "type": "string",
-          "description": "Associated user account Google UID"
+          "description": "Associated user account handle"
         },
         "customUserId": {
           "type": "string",
@@ -86,27 +110,67 @@
     },
     "ChatThread": {
       "title": "ChatThread",
-      "description": "Encrypted conversation thread metadata",
+      "description": "Two-way synchronized conversation thread between mesh peers",
       "type": "object",
       "properties": {
         "threadId": {
           "type": "string",
-          "description": "Unique identifier of the conversation thread"
+          "description": "Unique deterministic identifier of the thread"
         },
-        "creatorId": {
-          "type": "string",
-          "description": "User ID of creator"
-        },
-        "title": {
-          "type": "string",
-          "description": "Conversation title"
+        "participantIds": {
+          "type": "array",
+          "description": "List of participant user handles"
         },
         "lastMessage": {
           "type": "string",
           "description": "Last sent preview snippet"
+        },
+        "lastSenderId": {
+          "type": "string",
+          "description": "Handle of last sender"
+        },
+        "lastSenderName": {
+          "type": "string",
+          "description": "Display name of last sender"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp of last dispatch"
         }
       },
-      "required": ["threadId", "creatorId", "title"]
+      "required": ["threadId", "participantIds", "lastMessage"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "Encrypted message item in thread subcollection",
+      "type": "object",
+      "properties": {
+        "messageId": {
+          "type": "string",
+          "description": "Unique identifier of the message"
+        },
+        "threadId": {
+          "type": "string",
+          "description": "ID of thread"
+        },
+        "senderId": {
+          "type": "string",
+          "description": "Sender handle"
+        },
+        "senderName": {
+          "type": "string",
+          "description": "Sender display name"
+        },
+        "content": {
+          "type": "string",
+          "description": "Encrypted message content"
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "ISO timestamp of dispatch"
+        }
+      },
+      "required": ["messageId", "threadId", "senderId", "content"]
     }
   },
   "firestore": {
@@ -128,11 +192,23 @@
       },
       "description": "User account profiles"
     },
-    "/users/{userId}/threads/{threadId}": {
+    "/users/{userId}/contacts/{contactId}": {
+      "schema": {
+        "$ref": "#/entities/UserContact"
+      },
+      "description": "User saved contacts roster"
+    },
+    "/threads/{threadId}": {
       "schema": {
         "$ref": "#/entities/ChatThread"
       },
-      "description": "User conversation threads"
+      "description": "Shared two-way conversation threads"
+    },
+    "/threads/{threadId}/messages/{messageId}": {
+      "schema": {
+        "$ref": "#/entities/ChatMessage"
+      },
+      "description": "Messages inside conversation thread"
     }
   }
 }

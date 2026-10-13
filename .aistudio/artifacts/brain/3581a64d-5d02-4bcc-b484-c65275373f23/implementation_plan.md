@@ -1,119 +1,155 @@
-# Clean, Readable Light Theme Transformation
+# Sync Real Chats & Contacts with User ID Discovery
 
-Transition the Vhoqxeth interface from neon/glowing cyberpunk styling to a polished, modern, highly legible light theme featuring crisp white canvases, soft warm-gray elevation cards, deep indigo primary accents, and responsive layout scaling across all screen sizes.
+Transform Vhoqxeth from static sample mock data into a live, real-time Firestore-synchronized messaging network. New accounts start with a pristine clean state (zero placeholder contacts or threads), provide a peer discovery modal to add contacts by User ID, and synchronize two-way end-to-end conversation threads directly via Firestore snapshot listeners.
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> The following design and product directions were confirmed via interactive consultation:
-> - **Canvas & Surface Palette**: Crisp white canvas (`#FFFFFF` / `#F8FAFC`) with soft warm-gray cards (`#F1F5F9` / `#FFFFFF` with `#E2E8F0` borders).
-> - **Brand & Accent Style**: Deep indigo (`#4F46E5`) with crisp cobalt accents (`#2563EB`) replacing heavy neon cyan and magenta glows.
-> - **Theme Mode Hierarchy**: Clean light theme is the default experience, while fully supporting system dark mode seamlessly through dynamic Material 3 color schemes.
-> - **Build Environment Fix**: Strip accidental markdown backticks from `app/build.gradle.kts` so automated builds and CI runs remain healthy.
+> The following product decisions were confirmed during interactive consultation:
+> - **Peer Addition**: Modal dialog with real-time `@customUserId` search, instant verification badge, and one-tap "Add Contact".
+> - **First-Launch Zero State**: Clean empty state card featuring an inviting mesh communication graphic and an "Add Contact" call-to-action button.
+> - **Database Structure**: Real-time two-way shared threads under `/threads/{threadId}` with deterministic participant pairing (`thread_${min(u1,u2)}_${max(u1,u2)}`) and subcollection `/messages`, accompanied by personal contact rosters under `/users/{userId}/contacts`.
+> - **Sample Data Elimination**: Complete removal of `DummyData.placeholderThreads` and `DummyData.activeContacts` from user account views.
 
 ---
 
 ## 1. Overview & Core Concept
 
-- **What It Does**: Refactors the visual presentation layer across the entire application—Splash, Legal Consent, Auth Gateway, Main Chat List, and Admin Portal—to present clean, uncluttered, high-contrast layouts. Eliminates high-saturation glows, heavy neon gradients, and dense dark canvases in favor of airy, readable typography, subtle border delineation, and tactile Material 3 surfaces.
-- **Target Audience / Persona**: Users seeking a professional, distraction-free encrypted communication client that is effortless to read under daylight and low-light conditions.
-- **Key Value**: Drastically reduces visual fatigue, elevates typographic readability with compliant contrast ratios (WCAG AAA), and maintains instant visual hierarchy.
+- **What It Does**: Replaces static, hardcoded sample chats and contacts with dynamic, cloud-backed records. When an account is registered or logged in, their contacts and conversation history are pulled directly from Firestore in real time. Users can discover and add other registered users using their unique User ID (`customUserId`), immediately creating an active two-way thread.
+- **Target Audience / Persona**: Users communicating over the encrypted mesh who expect their personal address book and conversations to persist, sync across devices, and contain exclusively authentic user interactions.
+- **Key Value**: Delivers complete data authenticity, eliminates deceptive sample data, and provides an effortless peer addition experience with instant two-way sync.
 
 ---
 
 ## 2. User Experience & Visual Design
 
 ### Key User Flows
-1. **Onboarding / First Boot**:
-   - Clean, illuminated screen displaying protocol governance with crisp tabs for **Privacy Policy** and **Terms & Conditions**.
-   - Distinct, legible card sections with soft borders instead of heavy neon glow.
-2. **IP Identity & Login Gateway**:
-   - Centered brand emblem with a clean deep-indigo badge displaying the detected device IP.
-   - Clean text fields with high-contrast text entry and crisp focus outlines.
-   - Preserves the secret 7-tap gesture on the IP banner to open the Masterkey prompt for the Admin Portal.
-3. **Conversations Dashboard**:
-   - Clean, bright top app bar with subtle divider.
-   - High-contrast avatar initials, clean search bar with soft rounded edges, and readable unread message badges.
-   - Three-dot overflow menu cleanly presenting "About the App", "Privacy Policy", and "Terms & Conditions" in soft modal bottom sheets.
-4. **Admin Portal**:
-   - Clean data tables and cards for user profiles, registered IP indexes, and connection probes, styled with readable neutral slate tones.
 
-### Visual Identity & Theme Tokens
-```
-┌─────────────────────────┬──────────────────────────┬──────────────────────────┐
-│ Semantic Token          │ Light Mode (Default)     │ Dark Mode (Optional)     │
-├─────────────────────────┼──────────────────────────┼──────────────────────────┤
-│ background              │ #F8FAFC (Slate 50)       │ #0F172A (Slate 900)      │
-│ surface                 │ #FFFFFF (Crisp White)    │ #1E293B (Slate 800)      │
-│ surfaceVariant          │ #F1F5F9 (Slate 100)      │ #334155 (Slate 700)      │
-│ primary                 │ #4F46E5 (Indigo 600)     │ #818CF8 (Indigo 400)     │
-│ onPrimary               │ #FFFFFF (Pure White)     │ #0F172A (Slate 900)      │
-│ secondary               │ #2563EB (Cobalt 600)     │ #60A5FA (Blue 400)       │
-│ outline                 │ #E2E8F0 (Slate 200)      │ #475569 (Slate 600)      │
-│ textPrimary             │ #0F172A (Slate 900)      │ #F8FAFC (Slate 50)       │
-│ textSecondary           │ #475569 (Slate 600)      │ #94A3B8 (Slate 400)      │
-│ textMuted               │ #64748B (Slate 500)      │ #64748B (Slate 500)      │
-│ statusOnline            │ #10B981 (Emerald 500)    │ #34D399 (Emerald 400)    │
-└─────────────────────────┴──────────────────────────┴──────────────────────────┘
-```
+1. **New User Account / Clean Zero State**:
+   - On initial login, the user sees an empty conversation dashboard with zero sample chats.
+   - An elegant centered card features an indigo connection glyph, headline *"No mesh conversations yet"*, descriptive guidance *"Search for registered peers by their User ID to begin exchanging encrypted messages"*, and an **Add Contact** primary button.
+2. **Add Contact via User ID Modal**:
+   - Tapping the FAB or the empty state button opens the **Add Contact Dialog** (`add_contact_dialog`).
+   - The user enters a handle (e.g. `alice` or `@alice`).
+   - The system performs a debounced Firestore lookup against `/users` collection:
+     - **Found**: Displays a contact preview card with avatar initials, display name, verified `@customUserId`, and an **Add to Contacts** button.
+     - **Not Found**: Displays an informative *"No registered user found with ID @handle"* status.
+     - **Self-addition**: Prevents adding own User ID with friendly feedback.
+3. **Active Contact & Conversation Row**:
+   - Adding a contact stores it in `/users/{currentUserId}/contacts` and automatically starts or opens the deterministic two-way thread.
+   - Contacts appear in the top horizontal roster with their authentic display names and status indicators.
+   - Chats appear in the thread list sorted by `updatedAt` with live last-message snippets and unread counters.
+4. **Interactive Message Exchange**:
+   - Tapping any conversation thread opens the live message viewer with real-time Firestore message streams.
+   - Sending a message writes to `/threads/{threadId}/messages` and updates `/threads/{threadId}` metadata, instantly updating both participants' devices.
 
-### Typography & Hierarchy
-- **Display & Titles**: Bold sans-serif with natural letter-spacing (0.2.sp) in deep slate (`#0F172A`).
-- **Body & Captions**: Clean, open counterforms with generous line height (18–22.sp) for instant readability.
-- **Card Styling**: 10–14.dp rounded corners, subtle 1.dp border (`#E2E8F0`), and soft surface elevation without artificial blur glows.
+### Visual Identity & Theme Alignment
+- **Empty State Card**: Crisp white surface (`#FFFFFF`) with soft warm border (`#E2E8F0`), deep indigo icon badge, and slate typography.
+- **Add Contact Dialog**: Clean white container (`#FFFFFF`), rounded corners (16.dp), clear search text field with slate container (`#F8FAFC`), and vibrant deep indigo action buttons.
+- **Contact Chips**: Minimalist circle avatar with indigo-to-cobalt gradient and bold initials.
 
 ---
 
 ## 3. Key Product Decisions & Trade-Offs
 
-- **Decision 1: Semantic Theme Centralization**:
-  - *Chosen Approach*: Refactor `Color.kt` and `Theme.kt` so that all app screens dynamically resolve colors via `MaterialTheme.colorScheme` and semantic constants rather than hardcoded `VhoqxethDarkBg` hex constants.
-  - *Why*: Enables seamless switching between light and dark modes according to system preference, while guaranteeing light mode as the default.
-  - *Alternatives Considered*: Hardcoding a single static light theme would break system dark theme ergonomics.
+- **Decision 1: Deterministic Thread IDs for Two-Way Messaging**:
+  - *Chosen Approach*: `threadId = "thread_" + listOf(userId1, userId2).sorted().joinToString("_")`.
+  - *Why*: Guarantees that whether User A messages User B or User B messages User A, both participants read and write to the exact same Firestore thread without race conditions or duplicate thread documents.
+  - *Alternatives Considered*: Independent copies per user (causes desynchronization and double-writes).
 
-- **Decision 2: Elimination of High-Glow & Neon Filters**:
-  - *Chosen Approach*: Replace neon violet and cyan glowing borders with refined 1.dp borders (`#E2E8F0` in light mode, `#334155` in dark mode) and subtle indigo pills.
-  - *Why*: Directly satisfies the user's explicit requirement for "no high glow or neon just light and clean but attractive and responsive".
+- **Decision 2: Subcollection Messages with Root Threads**:
+  - *Chosen Approach*: `/threads/{threadId}` holds participants and snippet preview; `/threads/{threadId}/messages/{messageId}` holds individual encrypted messages.
+  - *Why*: Allows listening to lightweight thread metadata in the main list without loading thousands of historical message payloads into memory.
 
-- **Decision 3: Strict Functional Preservation**:
-  - *Chosen Approach*: Retain 100% of the existing business logic: IP resolution fallback, Firebase Firestore IP index linking, SessionManager state caching, 7-tap backdoor to Admin Portal with `P@ssw0rd` masterkey, and legal tabs on first boot.
-  - *Why*: Visual refactoring must never compromise existing features or security checks.
+- **Decision 3: Complete Removal of Sample Mock Data**:
+  - *Chosen Approach*: Clean deprecation of `DummyData.placeholderThreads` and `DummyData.activeContacts` from the UI.
+  - *Why*: Directly satisfies the user's explicit requirement: "Clear all chat and contacts on new user account and sync chats and contacts on database and remove the semple contacts".
 
 ---
 
-## 4. Technical Architecture & Component Structure
+## 4. Technical Architecture & Data Strategy
 
-### Component Hierarchy
+### System Diagram
+
 ```
-┌────────────────────────────────────────────────────────┐
-│                      MainActivity                      │
-│                 (VhoqxethTheme Wrapper)                │
-└───────────────────────────┬────────────────────────────┘
-                            │
-       ┌────────────────────┼────────────────────┐
-       ▼                    ▼                    ▼
-┌──────────────┐   ┌─────────────────┐   ┌──────────────┐
-│ SplashScreen │   │ LegalConsent    │   │ AuthGateway  │
-│              │   │ Screen (Tabs)   │   │ Screen       │
-└──────────────┘   └─────────────────┘   └───────┬──────┘
-                                                 │ 7-tap IP
-                                                 ▼
-┌─────────────────────────────────────┐   ┌──────────────┐
-│ ChatListScreen                      │   │ AdminPortal  │
-│ ├─ TopAppBar (Actions & 3-dot Menu) │   │ Screen       │
-│ ├─ Active Network & Connection Pill │   └──────────────┘
-│ ├─ Search Bar & Category Filter Row │
-│ ├─ Conversation Thread Rows         │
-│ └─ About & Legal Sheets (Modals)    │
-└─────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                       ChatListScreen                        │
+│  ┌───────────────────────┐       ┌───────────────────────┐  │
+│  │   ActiveContactsRow   │       │   FilteredThreadList  │  │
+│  │ (Live from Firestore) │       │ (Live from Firestore) │  │
+│  └───────────┬───────────┘       └───────────┬───────────┘  │
+│              │                               │              │
+│              └───────────────┬───────────────┘              │
+│                              ▼                              │
+│              ┌───────────────────────────────┐              │
+│              │     AddContactDialog (Modal)  │              │
+│              │   - Search by customUserId    │              │
+│              │   - Verify in /users          │              │
+│              └───────────────┬───────────────┘              │
+└──────────────────────────────┼──────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    MeshChatRepository                       │
+│  ├─ observeContacts(userId): Flow<List<UserContact>>        │
+│  ├─ observeThreads(userId): Flow<List<ChatThread>>          │
+│  ├─ searchUserByHandle(handle): Result<UserProfile?>        │
+│  ├─ addContact(userId, targetProfile): Result<Unit>         │
+│  └─ sendMessage(threadId, sender, content): Result<Unit>    │
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│                      Firestore Backend                      │
+│  ├─ /users/{userId}/contacts/{contactId}                    │
+│  ├─ /threads/{threadId} (participants: [u1, u2])            │
+│  └─ /threads/{threadId}/messages/{messageId}                │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### File Refactoring Scope
-1. **`app/build.gradle.kts`**: Strip accidental markdown code blocks (` ```kotlin ` and ` ``` `).
-2. **`Color.kt`**: Introduce light theme palette (slate 50–900 scale, refined deep indigo, cobalt accents, emerald status).
-3. **`Theme.kt`**: Implement proper `lightColorScheme()` as default, coupled with dynamic `darkColorScheme()`.
-4. **`LegalConsentScreen.kt`**: Update backgrounds, tab indicators, cards, and buttons to use the clean light theme tokens.
-5. **`AuthGatewayScreen.kt`**: Update IP status banner, buttons, forms, and dialogs to clean light surfaces with crisp contrast.
-6. **`ChatListScreen.kt`**: Update center-aligned top bar, search text fields, category pills, conversation item cards, dropdown menus, and modal sheets.
-7. **`AdminPortalScreen.kt`**: Style user cards, IP cards, and probe logs with clean warm-gray surfaces and high-contrast labels.
-8. **Test Suite**: Run `gradle :app:testDebugUnitTest` to guarantee all tests continue to pass without regression.
+### Data Schema Updates (`firebase-blueprint.json` & `firestore.rules`)
+
+1. **`UserContact` Entity**:
+   - `contactUserId`: String
+   - `displayName`: String
+   - `currentIp`: String
+   - `addedAt`: String
+2. **`ChatThread` Entity**:
+   - `threadId`: String
+   - `participantIds`: Array of String
+   - `participantNames`: Map of String -> String
+   - `lastMessage`: String
+   - `lastSenderId`: String
+   - `updatedAt`: String
+3. **`ChatMessage` Entity**:
+   - `messageId`: String
+   - `threadId`: String
+   - `senderId`: String
+   - `senderName`: String
+   - `content`: String
+   - `timestamp`: String
+
+### Security Rules (`firestore.rules`)
+- `/users/{userId}/contacts/{contactId}`: Allow read/write for contact entries.
+- `/threads/{threadId}`: Allow read/write for thread participants.
+- `/threads/{threadId}/messages/{messageId}`: Allow read/write for thread participants.
+
+---
+
+## 5. Implementation Phases
+
+1. **Phase 1: Database Blueprint & Rules**:
+   - Add `UserContact`, `ChatThread`, and `ChatMessage` to `firebase-blueprint.json`.
+   - Update `firestore.rules` and test against local emulator.
+2. **Phase 2: Repository & Data Models**:
+   - Create `UserContact.kt` and `ChatMessage.kt`.
+   - Create `MeshChatRepository.kt` with coroutine Flow snapshot listeners for contacts, threads, and peer search.
+3. **Phase 3: Add Contact Modal Dialog**:
+   - Create `AddContactDialog.kt` supporting debounce handle query, user profile preview, and instant add.
+4. **Phase 4: ChatListScreen & Clean Empty State Integration**:
+   - Replace `DummyData` with real-time `MeshChatRepository` flows.
+   - Build `EmptyChatState` card with "Add Contact" trigger.
+   - Wire live threads into conversation viewer with real message sending.
+5. **Phase 5: Verification & Testing**:
+   - Run unit and Robolectric tests (`gradle :app:testDebugUnitTest`).
+   - Validate full application build (`compile_applet`).

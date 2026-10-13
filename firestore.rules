@@ -31,6 +31,13 @@ service cloud.firestore {
         && data.customUserId is string;
     }
 
+    function isValidContact(data) {
+      return ('contactUserId' in data)
+        && ('displayName' in data)
+        && data.contactUserId is string
+        && data.displayName is string;
+    }
+
     function isValidThread(data, userId) {
       return ('threadId' in data)
         && ('creatorId' in data)
@@ -38,6 +45,26 @@ service cloud.firestore {
         && data.creatorId == userId
         && data.threadId is string
         && data.title is string;
+    }
+
+    function isValidSharedThread(data) {
+      return ('threadId' in data)
+        && ('participantIds' in data)
+        && ('lastMessage' in data)
+        && data.threadId is string
+        && data.participantIds is list
+        && data.lastMessage is string;
+    }
+
+    function isValidMessage(data) {
+      return ('messageId' in data)
+        && ('threadId' in data)
+        && ('senderId' in data)
+        && ('content' in data)
+        && data.messageId is string
+        && data.threadId is string
+        && data.senderId is string
+        && data.content is string;
     }
 
     // Connection probe endpoint for connectivity verification
@@ -59,8 +86,27 @@ service cloud.firestore {
       allow create, update: if isValidUser(request.resource.data, userId);
       allow delete: if true;
 
+      match /contacts/{contactId} {
+        allow read: if true;
+        allow create, update: if isValidContact(request.resource.data);
+        allow delete: if true;
+      }
+
       match /threads/{threadId} {
         allow read, write: if isValidThread(request.resource.data, userId);
+      }
+    }
+
+    // Two-way shared threads and realtime message dispatches
+    match /threads/{threadId} {
+      allow read: if true;
+      allow create, update: if isValidSharedThread(request.resource.data);
+      allow delete: if true;
+
+      match /messages/{messageId} {
+        allow read: if true;
+        allow create, update: if isValidMessage(request.resource.data);
+        allow delete: if true;
       }
     }
   }

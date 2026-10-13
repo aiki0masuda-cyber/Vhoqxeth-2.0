@@ -1,0 +1,419 @@
+package com.example.data
+
+import android.content.Context
+import android.util.Log
+import com.example.R
+import com.example.model.ChatMessage
+import com.example.model.ConversationCategory
+import com.example.model.ConversationThread
+import com.example.model.MessageStatus
+import com.example.model.SnippetType
+import com.example.model.UserContact
+import com.example.model.UserProfile
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.UUID
+
+class MeshChatRepository(
+    private val db: FirebaseFirestore
+) {
+    private val tag = "MeshChatRepository"
+
+    constructor(context: Context) : this(
+        FirebaseFirestore.getInstance(
+            context.applicationContext.getString(R.string.firestore_database_id)
+        )
+    )
+
+    private fun getCurrentIsoTimestamp(): String {
+        val format = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
+        return format.format(Date())
+    }
+
+    private fun formatRelativeTime(isoString: String): String {
+        if (isoString.isBlank()) return "Now"
+        return try {
+            val format = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
+            val date = format.parse(isoString) ?: return "Just now"
+            val diffMs = System.currentTimeMillis() - date.time
+            val diffMinutes = diffMs / 60000
+            val diffHours = diffMinutes / 60
+            val diffDays = diffHours / 24
+
+            when {
+                diffMinutes < 1 -> "Now"
+                diffMinutes < 60 -> "${diffMinutes}m"
+                diffHours < 24 -> "${diffHours}h"
+                diffDays < 7 -> "${diffDays}d"
+                else -> SimpleDateFormat("MMM d", Locale.US).format(date)
+            }
+        } catch (_: Exception) {
+            "Active"
+        }
+    }
+
+    /**
+     * Generates a deterministic thread ID between two participant user handles.
+     */
+    fun generateThreadId(user1: String, user2: String): String {
+        val u1 = user1.trim().removePrefix("@").lowercase()
+        val u2 = user2.trim().removePrefix("@").lowercase()
+        val sorted = listOf(u1, u2).sorted()
+        return "thread_${sorted[0]}_${sorted[1]}"
+    }
+
+    /**
+     * Real-time flow of user contacts from /users/{userId}/contacts
+     */
+    fun observeContacts(userId: String): Flow<List<UserContact>> = callbackFlow {
+        val sanitized = userId.trim().removePrefix("@")
+        if (sanitized.isBlank()) {
+            trySend(emptyList())
+            close()
+            return@callbackFlow
+        }
+
+        val registration: ListenerRegistration = db.collection("users")
+            .document(sanitized)
+            .collection("contacts")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e(tag, "Error listening to contacts for $sanitized: ${error.message}", error)
+                    trySend(emptyList())
+                    return@addSnapshotListener
+                }
+
+                if (snapshot != null) {
+                    val contacts = snapshot.documents.mapNotNull { doc ->
+                        doc.toObject(UserContact::class.java)
+                    }
+                    trySend(contacts)
+                } else {
+                    trySend(emptyList())
+                }
+            }
+
+        awaitClose {
+            registration.remove()
+        }
+    }.flowOn(Dispatchers.IO)
+
+    /**
+     * Real-time flow of shared threads where current user is a participant.
+     */
+    fun observeThreads(userId: String): Flow<List<ConversationThread>> = callbackFlow {
+        val sanitized = userId.trim().removePrefix("@").lowercase()
+        if (sanitized.isBlank()) {
+            trySend(emptyList())
+            close()
+            return@callbackFlow
+        }
+
+        val registration: ListenerRegistration = db.collection("threads")
+            .whereArrayContains("participantIds", sanitized)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e(tag, "Error listening to threads for $sanitized: ${error.message}", error)
+                    trySend(emptyList())
+                    return@addSnapshotListener
+                }
+
+                if (snapshot != null) {
+                    val threads = snapshot.documents.mapNotNull { doc ->
+                        val threadId = doc.getString("threadId") ?: doc.id
+                        @Suppress("UNCHECKED_CAST")
+                        val participants = (doc.get("participantIds") as? List<String>) ?: emptyList()
+                        val lastMessage = doc.getString("lastMessage") ?: ""
+                        val lastSenderId = doc.getString("lastSenderId") ?: ""
+                        val lastSenderName = doc.getString("lastSenderName") ?: ""
+                        val updatedAt = doc.getString("updatedAt") ?: ""
+
+                        // Identify the peer handle
+                        val peerHandle = participants.firstOrNull { it != sanitized } ?: sanitized
+                        val displayName = peerHandle.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.US) else it.toString() }
+                        val initials = peerHandle.take(2).uppercase().ifBlank { "VQ" }
+
+                        ConversationThread(
+                            id = threadId,
+                            name = displayName,
+                            lastMessage = lastMessage,
+                            timestamp = formatRelativeTime(updatedAt),
+                            unreadCount = 0,
+                            isOnline = true,
+                            isPinned = false,
+                            isMuted = false,
+                            isVerified = true,
+                            isGroup = false,
+                            category = ConversationCategory.DIRECT,
+                            avatarInitials = initials,
+                            avatarColorStart = 0xFF4F46E5,
+                            avatarColorEnd = 0xFF2563EB,
+                            lastSenderName = lastSenderName,
+                            lastSenderId = lastSenderId,
+                            participantIds = participants,
+                            messageStatus = MessageStatus.DELIVERED,
+                            snippetType = SnippetType.TEXT
+                        )
+                    }.sortedByDescending { it.timestamp }
+
+                    trySend(threads)
+                } else {
+                    trySend(emptyList())
+                }
+            }
+
+        awaitClose {
+            registration.remove()
+        }
+    }.flowOn(Dispatchers.IO)
+
+    /**
+     * Real-time flow of messages in a thread from /threads/{threadId}/messages
+     */
+    fun observeMessages(threadId: String): Flow<List<ChatMessage>> = callbackFlow {
+        if (threadId.isBlank()) {
+            trySend(emptyList())
+            close()
+            return@callbackFlow
+        }
+
+        val registration: ListenerRegistration = db.collection("threads")
+            .document(threadId)
+            .collection("messages")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e(tag, "Error listening to messages in $threadId: ${error.message}", error)
+                    trySend(emptyList())
+                    return@addSnapshotListener
+                }
+
+                if (snapshot != null) {
+                    val messages = snapshot.documents.mapNotNull { doc ->
+                        doc.toObject(ChatMessage::class.java)
+                    }.sortedBy { it.timestamp }
+                    trySend(messages)
+                } else {
+                    trySend(emptyList())
+                }
+            }
+
+        awaitClose {
+            registration.remove()
+        }
+    }.flowOn(Dispatchers.IO)
+
+    /**
+     * Search for a registered user profile by handle.
+     */
+    suspend fun searchUserByHandle(handle: String): Result<UserProfile?> = withContext(Dispatchers.IO) {
+        try {
+            val key = handle.trim().removePrefix("@")
+            if (key.isBlank()) return@withContext Result.success(null)
+
+            val doc = db.collection("users").document(key).get().await()
+            if (doc.exists()) {
+                val profile = doc.toObject(UserProfile::class.java)
+                Result.success(profile)
+            } else {
+                Result.success(null)
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "Search user failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Adds a user contact to the current user's roster, adds reciprocal contact,
+     * and initializes the shared thread in Firestore.
+     */
+    suspend fun addContact(
+        currentUser: UserProfile,
+        targetUser: UserProfile
+    ): Result<ConversationThread> = withContext(Dispatchers.IO) {
+        try {
+            val currentHandle = currentUser.customUserId.trim().removePrefix("@").lowercase()
+            val targetHandle = targetUser.customUserId.trim().removePrefix("@").lowercase()
+
+            if (currentHandle.isBlank() || targetHandle.isBlank()) {
+                return@withContext Result.failure(IllegalArgumentException("User handle cannot be blank."))
+            }
+
+            if (currentHandle == targetHandle) {
+                return@withContext Result.failure(IllegalArgumentException("Cannot add your own User ID as a contact."))
+            }
+
+            val now = getCurrentIsoTimestamp()
+
+            // 1. Save to current user's contacts
+            val contactPayloadCurrent = mapOf(
+                "contactUserId" to targetHandle,
+                "displayName" to targetUser.displayName.ifBlank { targetHandle },
+                "currentIp" to targetUser.currentIp,
+                "addedAt" to now
+            )
+            try {
+                db.collection("users")
+                    .document(currentHandle)
+                    .collection("contacts")
+                    .document(targetHandle)
+                    .set(contactPayloadCurrent)
+                    .await()
+            } catch (e: Exception) {
+                return@withContext Result.failure(Exception("Failed Step 1 (users/$currentHandle/contacts/$targetHandle): ${e.message}", e))
+            }
+
+            // 2. Save reciprocal contact in target user's contacts
+            val contactPayloadTarget = mapOf(
+                "contactUserId" to currentHandle,
+                "displayName" to currentUser.displayName.ifBlank { currentHandle },
+                "currentIp" to currentUser.currentIp,
+                "addedAt" to now
+            )
+            try {
+                db.collection("users")
+                    .document(targetHandle)
+                    .collection("contacts")
+                    .document(currentHandle)
+                    .set(contactPayloadTarget)
+                    .await()
+            } catch (e: Exception) {
+                return@withContext Result.failure(Exception("Failed Step 2 (users/$targetHandle/contacts/$currentHandle): ${e.message}", e))
+            }
+
+            // 3. Ensure deterministic shared thread exists
+            val threadId = generateThreadId(currentHandle, targetHandle)
+            val threadDoc = db.collection("threads").document(threadId).get().await()
+
+            val initialMessage = "Encrypted mesh session established"
+            if (!threadDoc.exists()) {
+                val threadPayload = mapOf(
+                    "threadId" to threadId,
+                    "participantIds" to listOf(currentHandle, targetHandle).sorted(),
+                    "lastMessage" to initialMessage,
+                    "lastSenderId" to currentHandle,
+                    "lastSenderName" to currentUser.displayName,
+                    "updatedAt" to now
+                )
+                try {
+                    db.collection("threads").document(threadId).set(threadPayload).await()
+                } catch (e: Exception) {
+                    return@withContext Result.failure(Exception("Failed Step 3 (threads/$threadId): ${e.message}", e))
+                }
+
+                // Add welcome handshake message
+                val msgId = "msg_${UUID.randomUUID().toString().take(8)}"
+                val msgPayload = mapOf(
+                    "messageId" to msgId,
+                    "threadId" to threadId,
+                    "senderId" to currentHandle,
+                    "senderName" to currentUser.displayName,
+                    "content" to initialMessage,
+                    "timestamp" to now
+                )
+                try {
+                    db.collection("threads").document(threadId).collection("messages").document(msgId).set(msgPayload).await()
+                } catch (e: Exception) {
+                    return@withContext Result.failure(Exception("Failed Step 4 (threads/$threadId/messages/$msgId): ${e.message}", e))
+                }
+            }
+
+            val resultThread = ConversationThread(
+                id = threadId,
+                name = targetUser.displayName.ifBlank { targetHandle },
+                lastMessage = initialMessage,
+                timestamp = "Now",
+                unreadCount = 0,
+                isOnline = true,
+                isPinned = false,
+                isMuted = false,
+                isVerified = true,
+                isGroup = false,
+                category = ConversationCategory.DIRECT,
+                avatarInitials = targetUser.displayName.take(2).uppercase().ifBlank { "VQ" },
+                avatarColorStart = 0xFF4F46E5,
+                avatarColorEnd = 0xFF2563EB,
+                lastSenderName = currentUser.displayName,
+                lastSenderId = currentHandle,
+                participantIds = listOf(currentHandle, targetHandle).sorted(),
+                messageStatus = MessageStatus.SENT,
+                snippetType = SnippetType.TEXT
+            )
+
+            Log.i(tag, "Successfully added contact @$targetHandle and synced thread $threadId")
+            Result.success(resultThread)
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to add contact: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Dispatches a message to the shared thread and updates the thread's last message.
+     */
+    suspend fun sendMessage(
+        threadId: String,
+        senderProfile: UserProfile,
+        content: String
+    ): Result<ChatMessage> = withContext(Dispatchers.IO) {
+        try {
+            val trimmed = content.trim()
+            if (trimmed.isBlank()) {
+                return@withContext Result.failure(IllegalArgumentException("Message cannot be empty."))
+            }
+
+            val now = getCurrentIsoTimestamp()
+            val senderHandle = senderProfile.customUserId.trim().removePrefix("@").lowercase()
+            val messageId = "msg_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}"
+
+            val msgPayload = mapOf(
+                "messageId" to messageId,
+                "threadId" to threadId,
+                "senderId" to senderHandle,
+                "senderName" to senderProfile.displayName,
+                "content" to trimmed,
+                "timestamp" to now
+            )
+
+            // Write message subcollection document
+            db.collection("threads")
+                .document(threadId)
+                .collection("messages")
+                .document(messageId)
+                .set(msgPayload)
+                .await()
+
+            // Update thread lastMessage & updatedAt
+            val updatePayload = mapOf<String, Any>(
+                "lastMessage" to trimmed,
+                "lastSenderId" to senderHandle,
+                "lastSenderName" to senderProfile.displayName,
+                "updatedAt" to now
+            )
+            db.collection("threads").document(threadId).update(updatePayload).await()
+
+            val created = ChatMessage(
+                messageId = messageId,
+                threadId = threadId,
+                senderId = senderHandle,
+                senderName = senderProfile.displayName,
+                content = trimmed,
+                timestamp = now
+            )
+            Result.success(created)
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to send message: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+}

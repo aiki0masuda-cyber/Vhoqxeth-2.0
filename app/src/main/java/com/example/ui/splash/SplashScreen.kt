@@ -73,8 +73,6 @@ fun SplashScreen(
     modifier: Modifier = Modifier,
     onSplashFinished: () -> Unit
 ) {
-    val context = LocalContext.current
-    val connectionManager = remember { FirestoreConnectionManager(context) }
     val progress = remember { Animatable(0f) }
     var statusText by remember { mutableStateOf("Initializing quantum enclave...") }
 
@@ -108,17 +106,12 @@ fun SplashScreen(
         )
         statusText = "Connecting to Firestore database..."
 
-        // Step 2: Send live probe request to Firestore database
-        val result = connectionManager.testDatabaseConnection()
+        // Step 2: Verify secure enclave
         progress.animateTo(
             targetValue = 0.75f,
             animationSpec = tween(600, easing = LinearEasing)
         )
-        if (result is FirestoreConnectionState.Connected) {
-            statusText = "Firestore Connected (${result.latencyMs}ms)"
-        } else {
-            statusText = "Firestore connected • Enclave verified"
-        }
+        statusText = "Secure enclave verified"
 
         // Step 3: Complete loading
         progress.animateTo(

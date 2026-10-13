@@ -1197,31 +1197,40 @@ fun MasterKeyOverrideDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF14121E),
+        containerColor = Color.White,
+        shape = RoundedCornerShape(16.dp),
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.VpnKey,
-                    contentDescription = null,
-                    tint = Color(0xFFFFB300),
-                    modifier = Modifier.size(24.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(VhoqxethPrimaryViolet.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.VpnKey,
+                        contentDescription = null,
+                        tint = VhoqxethPrimaryViolet,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(10.dp))
                 Text(
-                    text = "MASTER ENCLAVE OVERRIDE",
-                    color = Color(0xFFFFB300),
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.sp
+                    text = "Master Enclave Override",
+                    color = VhoqxethTextPrimary,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold
                 )
             }
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
                     text = "Enter masterkey to unlock the Administrative Database Console with root privileges:",
                     color = VhoqxethTextSecondary,
-                    fontSize = 12.sp
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp
                 )
 
                 OutlinedTextField(
@@ -1230,7 +1239,7 @@ fun MasterKeyOverrideDialog(
                         password = it
                         isError = false
                     },
-                    placeholder = { Text("Masterkey...", color = VhoqxethTextMuted) },
+                    placeholder = { Text("Enter masterkey...", color = VhoqxethTextMuted) },
                     singleLine = true,
                     visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                     trailingIcon = {
@@ -1238,7 +1247,7 @@ fun MasterKeyOverrideDialog(
                             Icon(
                                 imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
                                 contentDescription = "Toggle password visibility",
-                                tint = VhoqxethCyanAccent
+                                tint = VhoqxethTextSecondary
                             )
                         }
                     },
@@ -1246,10 +1255,10 @@ fun MasterKeyOverrideDialog(
                     supportingText = {
                         if (isError) {
                             Text(
-                                text = "INVALID MASTERKEY • ACCESS DENIED",
-                                color = Color(0xFFFF5252),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
+                                text = "Invalid masterkey • Access denied",
+                                color = Color(0xFFDC2626),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
                             )
                         }
                     },
@@ -1258,9 +1267,9 @@ fun MasterKeyOverrideDialog(
                         .testTag("admin_masterkey_input"),
                     shape = RoundedCornerShape(10.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = Color(0xFF1B1829),
-                        unfocusedContainerColor = Color(0xFF1B1829),
-                        focusedBorderColor = Color(0xFFFFB300),
+                        focusedContainerColor = Color(0xFFF8FAFC),
+                        unfocusedContainerColor = Color(0xFFF8FAFC),
+                        focusedBorderColor = VhoqxethPrimaryViolet,
                         unfocusedBorderColor = VhoqxethBorder,
                         focusedTextColor = VhoqxethTextPrimary,
                         unfocusedTextColor = VhoqxethTextPrimary
@@ -1278,14 +1287,19 @@ fun MasterKeyOverrideDialog(
                     }
                 },
                 modifier = Modifier.testTag("submit_masterkey_button"),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFB300))
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = VhoqxethPrimaryViolet)
             ) {
-                Text("Authorize Access", color = Color.Black, fontWeight = FontWeight.Bold)
+                Text("Authorize Access", color = Color.White, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
-            OutlinedButton(onClick = onDismiss) {
-                Text("Cancel", color = VhoqxethTextSecondary)
+            OutlinedButton(
+                onClick = onDismiss,
+                shape = RoundedCornerShape(10.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, VhoqxethBorder)
+            ) {
+                Text("Cancel", color = VhoqxethTextSecondary, fontWeight = FontWeight.Medium)
             }
         }
     )

@@ -114,7 +114,6 @@ fun AdminPortalScreen(
     // Data lists
     var users by remember { mutableStateOf<List<UserProfile>>(emptyList()) }
     var registeredIps by remember { mutableStateOf<List<RegisteredIpEntry>>(emptyList()) }
-    var probes by remember { mutableStateOf<List<Map<String, Any>>>(emptyList()) }
 
     // Dialog states
     var showAddUserDialog by remember { mutableStateOf(false) }
@@ -128,11 +127,9 @@ fun AdminPortalScreen(
         coroutineScope.launch {
             val usersRes = adminRepository.getAllUsers()
             val ipsRes = adminRepository.getAllRegisteredIps()
-            val probesRes = adminRepository.getConnectionProbes()
 
             users = usersRes.getOrDefault(emptyList())
             registeredIps = ipsRes.getOrDefault(emptyList())
-            probes = probesRes.getOrDefault(emptyList())
             isLoading = false
         }
     }
@@ -257,19 +254,6 @@ fun AdminPortalScreen(
                     },
                     modifier = Modifier.testTag("admin_tab_ips")
                 )
-                Tab(
-                    selected = selectedTab == 2,
-                    onClick = { selectedTab = 2 },
-                    text = {
-                        Text(
-                            "Probes (${probes.size})",
-                            fontWeight = if (selectedTab == 2) FontWeight.Bold else FontWeight.Normal,
-                            color = if (selectedTab == 2) AdminAmber else VhoqxethTextSecondary,
-                            fontSize = 13.sp
-                        )
-                    },
-                    modifier = Modifier.testTag("admin_tab_probes")
-                )
             }
 
             // Status / Error message
@@ -314,15 +298,6 @@ fun AdminPortalScreen(
                     onDeleteIp = { ipEntry ->
                         coroutineScope.launch {
                             adminRepository.deleteRegisteredIp(ipEntry.ip, ipEntry.customUserId)
-                            refreshData()
-                        }
-                    }
-                )
-                2 -> DiagnosticsTabContent(
-                    probes = probes,
-                    onSendTestProbe = {
-                        coroutineScope.launch {
-                            adminRepository.createTestProbe()
                             refreshData()
                         }
                     }
@@ -740,94 +715,7 @@ private fun IpRegistryTabContent(
     }
 }
 
-@Composable
-private fun DiagnosticsTabContent(
-    probes: List<Map<String, Any>>,
-    onSendTestProbe: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-            .verticalScroll(rememberScrollState())
-    ) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(containerColor = AdminCardBg),
-            border = androidx.compose.foundation.BorderStroke(1.dp, VhoqxethBorder)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "DATABASE STATUS",
-                    color = AdminAmber,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.sp
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "🟢 Firestore Connected • Online",
-                    color = VhoqxethOnlineGreen,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(modifier = Modifier.height(14.dp))
-                Button(
-                    onClick = onSendTestProbe,
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = VhoqxethPrimaryViolet)
-                ) {
-                    Icon(imageVector = Icons.Default.Storage, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Trigger Audit Ping", fontSize = 13.sp)
-                }
-            }
-        }
 
-        Spacer(modifier = Modifier.height(18.dp))
-
-        Text(
-            text = "PROBE LOG HISTORY (${probes.size})",
-            color = VhoqxethTextSecondary,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.sp
-        )
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        probes.forEach { probe ->
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                shape = RoundedCornerShape(8.dp),
-                colors = CardDefaults.cardColors(containerColor = AdminSurface),
-                border = androidx.compose.foundation.BorderStroke(0.5.dp, VhoqxethBorder)
-            ) {
-                Column(modifier = Modifier.padding(10.dp)) {
-                    Text(
-                        text = "ID: ${probe["_id"] ?: "probe"}",
-                        color = VhoqxethCyanBright,
-                        fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    Text(
-                        text = "Status: ${probe["status"] ?: "OK"} • Client: ${probe["clientApp"] ?: "unknown"}",
-                        color = VhoqxethTextPrimary,
-                        fontSize = 12.sp
-                    )
-                    Text(
-                        text = "Timestamp: ${probe["timestamp"] ?: "N/A"}",
-                        color = VhoqxethTextMuted,
-                        fontSize = 11.sp
-                    )
-                }
-            }
-        }
-    }
-}
 
 @Composable
 private fun AddUserDialog(

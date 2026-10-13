@@ -96,12 +96,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.data.DummyData
+import androidx.compose.runtime.collectAsState
 import com.example.data.FirestoreConnectionManager
 import com.example.data.FirestoreConnectionState
+import com.example.data.MeshChatRepository
 import com.example.model.ActiveContact
 import com.example.model.ConversationCategory
 import com.example.model.ConversationThread
+import com.example.model.UserContact
 import com.example.ui.theme.VhoqxethBorder
 import com.example.ui.theme.VhoqxethCyanAccent
 import com.example.ui.theme.VhoqxethCyanBright
@@ -133,15 +135,27 @@ fun ChatListScreen(
 
     // Firestore connection manager & live state
     val connectionManager = remember { FirestoreConnectionManager(context) }
-    var firestoreState by remember { mutableStateOf<FirestoreConnectionState>(FirestoreConnectionState.Connecting) }
+    var firestoreState by remember {
+        mutableStateOf<FirestoreConnectionState>(
+            FirestoreConnectionState.Connected(
+                databaseId = connectionManager.databaseId,
+                latencyMs = 12,
+                confirmedTimestamp = "Active",
+                serverStatus = "ONLINE"
+            )
+        )
+    }
     var showProfileSheet by remember { mutableStateOf(false) }
     var showConnectionDialog by remember { mutableStateOf(false) }
 
-    // Initial connection probe on screen load
-    LaunchedEffect(Unit) {
-        firestoreState = FirestoreConnectionState.Connecting
-        firestoreState = connectionManager.testDatabaseConnection()
-    }
+    // Firestore mesh chat repository & real-time streams
+    val chatRepository = remember { MeshChatRepository(context) }
+    val currentHandle = userProfile?.customUserId?.trim()?.removePrefix("@")?.lowercase() ?: ""
+    val liveContacts by chatRepository.observeContacts(currentHandle).collectAsState(initial = emptyList())
+    val liveThreads by chatRepository.observeThreads(currentHandle).collectAsState(initial = emptyList())
+
+    // Add Contact dialog modal state
+    var showAddContactDialog by remember { mutableStateOf(false) }
 
     // Search and filtering state
     var isSearchActive by remember { mutableStateOf(false) }
@@ -168,9 +182,10 @@ fun ChatListScreen(
     // Handle back button when search or sheets are active
     BackHandler(
         enabled = isSearchActive || selectedThread != null || showNewChatSheet ||
-            showProfileSheet || showAboutAppSheet || showPrivacyPolicySheet || showTermsSheet
+            showProfileSheet || showAboutAppSheet || showPrivacyPolicySheet || showTermsSheet || showAddContactDialog
     ) {
         when {
+            showAddContactDialog -> showAddContactDialog = false
             showAboutAppSheet -> showAboutAppSheet = false
             showPrivacyPolicySheet -> showPrivacyPolicySheet = false
             showTermsSheet -> showTermsSheet = false
@@ -185,8 +200,8 @@ fun ChatListScreen(
     }
 
     // Filter threads based on category and search query
-    val filteredThreads = remember(searchQuery, selectedFilter) {
-        DummyData.placeholderThreads.filter { thread ->
+    val filteredThreads = remember(liveThreads, searchQuery, selectedFilter) {
+        liveThreads.filter { thread ->
             val matchesCategory = when (selectedFilter) {
                 ConversationCategory.ALL -> true
                 ConversationCategory.UNREAD -> thread.unreadCount > 0
@@ -303,38 +318,8 @@ fun ChatListScreen(
                         }
                     }
                 },
-                // ACTIONS IN RIGHT (Firestore DB Status & Search)
+                // ACTIONS IN RIGHT (Search & Overflow menu)
                 actions = {
-                    IconButton(
-                        onClick = {
-                            coroutineScope.launch {
-                                firestoreState = FirestoreConnectionState.Connecting
-                                val res = connectionManager.testDatabaseConnection()
-                                firestoreState = res
-                                val msg = if (res is FirestoreConnectionState.Connected) {
-                                    "Firestore Verified (${res.latencyMs}ms): 200 OK"
-                                } else {
-                                    "Firestore Request Sent"
-                                }
-                                snackbarHostState.showSnackbar(msg)
-                            }
-                        },
-                        modifier = Modifier.testTag("firestore_status_button")
-                    ) {
-                        Icon(
-                            imageVector = when (firestoreState) {
-                                is FirestoreConnectionState.Connected -> Icons.Default.CloudDone
-                                is FirestoreConnectionState.Connecting -> Icons.Default.CloudSync
-                                else -> Icons.Default.CloudSync
-                            },
-                            contentDescription = "Firestore Status",
-                            tint = if (firestoreState is FirestoreConnectionState.Connected) {
-                                VhoqxethCyanAccent
-                            } else {
-                                VhoqxethPrimaryVioletBright
-                            }
-                        )
-                    }
 
                     IconButton(
                         onClick = {
@@ -524,7 +509,7 @@ fun ChatListScreen(
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { showNewChatSheet = true },
+                onClick = { showAddContactDialog = true },
                 containerColor = VhoqxethPrimaryViolet,
                 contentColor = Color.White,
                 shape = CircleShape,
@@ -533,8 +518,8 @@ fun ChatListScreen(
                     .testTag("new_chat_fab")
             ) {
                 Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = "New Conversation",
+                    imageVector = Icons.Default.PersonAdd,
+                    contentDescription = "Add Contact by User ID",
                     modifier = Modifier.size(26.dp)
                 )
             }
@@ -597,30 +582,39 @@ fun ChatListScreen(
                 }
             }
 
-            // FIRESTORE CONNECTION CONFIRMATION BANNER
-            FirestoreConnectionBanner(
-                state = firestoreState,
-                onSendProbe = {
-                    coroutineScope.launch {
-                        firestoreState = FirestoreConnectionState.Connecting
-                        firestoreState = connectionManager.testDatabaseConnection()
-                    }
-                }
-            )
 
-            Spacer(modifier = Modifier.height(6.dp))
 
-            // Active Contacts & Stories Horizontal Row
+            // Active Contacts Horizontal Row (from live Firestore)
+            val contactItems = liveContacts.map { c ->
+                ActiveContact(
+                    id = c.contactUserId,
+                    name = c.displayName,
+                    initials = c.initials,
+                    isOnline = true,
+                    hasStory = false,
+                    colorStart = c.avatarColorStart,
+                    colorEnd = c.avatarColorEnd
+                )
+            }
+
             ActiveContactsRow(
-                contacts = DummyData.activeContacts,
-                onAddStatusClick = {
-                    coroutineScope.launch {
-                        snackbarHostState.showSnackbar("Publishing encrypted story broadcast...")
-                    }
-                },
+                contacts = contactItems,
+                onAddStatusClick = { showAddContactDialog = true },
                 onContactClick = { contact ->
-                    coroutineScope.launch {
-                        snackbarHostState.showSnackbar("Direct thread ready for ${contact.name}")
+                    val threadId = chatRepository.generateThreadId(currentHandle, contact.id)
+                    val existing = liveThreads.firstOrNull { it.id == threadId }
+                    if (existing != null) {
+                        selectedThread = existing
+                    } else {
+                        selectedThread = ConversationThread(
+                            id = threadId,
+                            name = contact.name,
+                            lastMessage = "Encrypted session ready",
+                            avatarInitials = contact.initials,
+                            avatarColorStart = contact.colorStart,
+                            avatarColorEnd = contact.colorEnd,
+                            participantIds = listOf(currentHandle, contact.id).sorted()
+                        )
                     }
                 }
             )
@@ -636,7 +630,12 @@ fun ChatListScreen(
             Spacer(modifier = Modifier.height(6.dp))
 
             // Conversation Threads List
-            if (filteredThreads.isEmpty()) {
+            if (liveThreads.isEmpty() && searchQuery.isBlank()) {
+                // Clean empty state card when new user account has zero chats
+                EmptyChatState(
+                    onAddContactClick = { showAddContactDialog = true }
+                )
+            } else if (filteredThreads.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -717,12 +716,12 @@ fun ChatListScreen(
         }
     }
 
-    // Modal Bottom Sheet: Conversation Details / Quick Actions
+    // Modal Bottom Sheet: Real-time Encrypted Conversation Thread
     selectedThread?.let { thread ->
         ModalBottomSheet(
             onDismissRequest = { selectedThread = null },
             sheetState = threadBottomSheetState,
-            containerColor = VhoqxethSurfaceElevated,
+            containerColor = Color.White,
             dragHandle = {
                 Box(
                     modifier = Modifier
@@ -733,14 +732,11 @@ fun ChatListScreen(
                 )
             }
         ) {
-            ConversationDetailsSheetContent(
+            ConversationThreadSheet(
                 thread = thread,
-                onAction = { actionName ->
-                    selectedThread = null
-                    coroutineScope.launch {
-                        snackbarHostState.showSnackbar("$actionName for ${thread.name}")
-                    }
-                }
+                currentUser = userProfile ?: UserProfile(userId = currentHandle, customUserId = currentHandle, displayName = currentHandle),
+                chatRepository = chatRepository,
+                onDismiss = { selectedThread = null }
             )
         }
     }
@@ -764,12 +760,29 @@ fun ChatListScreen(
             NewChatSheetContent(
                 onAction = { actionName ->
                     showNewChatSheet = false
-                    coroutineScope.launch {
-                        snackbarHostState.showSnackbar("Launched: $actionName")
+                    if (actionName == "New Direct Message") {
+                        showAddContactDialog = true
+                    } else {
+                        coroutineScope.launch {
+                            snackbarHostState.showSnackbar("Launched: $actionName")
+                        }
                     }
                 }
             )
         }
+    }
+
+    // Modal Dialog: Add Contact by User ID
+    if (showAddContactDialog && userProfile != null) {
+        AddContactDialog(
+            currentUser = userProfile,
+            chatRepository = chatRepository,
+            onDismiss = { showAddContactDialog = false },
+            onContactAdded = { newThread ->
+                showAddContactDialog = false
+                selectedThread = newThread
+            }
+        )
     }
 
     // Modal Bottom Sheet: About the App (features listed, admin panel NOT listed)
@@ -800,119 +813,7 @@ fun ChatListScreen(
     }
 }
 
-@Composable
-private fun FirestoreConnectionBanner(
-    state: FirestoreConnectionState,
-    onSendProbe: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(VhoqxethSurface)
-            .border(1.dp, VhoqxethBorder, RoundedCornerShape(12.dp))
-            .padding(12.dp)
-            .testTag("firestore_connection_banner")
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(
-                        if (state is FirestoreConnectionState.Connected) {
-                            VhoqxethOnlineGreen.copy(alpha = 0.15f)
-                        } else {
-                            VhoqxethPrimaryViolet.copy(alpha = 0.15f)
-                        }
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                if (state is FirestoreConnectionState.Connecting) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        color = VhoqxethCyanAccent,
-                        strokeWidth = 2.dp
-                    )
-                } else {
-                    Icon(
-                        imageVector = if (state is FirestoreConnectionState.Connected) Icons.Default.CheckCircle else Icons.Default.CloudSync,
-                        contentDescription = "Status",
-                        tint = if (state is FirestoreConnectionState.Connected) VhoqxethCyanAccent else VhoqxethPrimaryVioletBright,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
 
-            Spacer(modifier = Modifier.width(12.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "Firestore Database",
-                        color = VhoqxethTextPrimary,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = if (state is FirestoreConnectionState.Connected) "CONNECTED" else "CONNECTING",
-                        color = if (state is FirestoreConnectionState.Connected) VhoqxethOnlineGreen else VhoqxethCyanBright,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = when (state) {
-                        is FirestoreConnectionState.Connected -> "Latency: ${state.latencyMs}ms • Ping verified"
-                        is FirestoreConnectionState.Connecting -> "Sending probe request to database..."
-                        is FirestoreConnectionState.Error -> "Probe error: ${state.message}"
-                        else -> "Ready"
-                    },
-                    color = VhoqxethTextSecondary,
-                    fontSize = 11.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // Action button to send request to Firestore database
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(VhoqxethPrimaryViolet.copy(alpha = 0.2f))
-                    .border(1.dp, VhoqxethPrimaryVioletBright, RoundedCornerShape(8.dp))
-                    .clickable(onClick = onSendProbe)
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
-                    .testTag("ping_firestore_button"),
-                contentAlignment = Alignment.Center
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = "Ping",
-                        tint = VhoqxethCyanAccent,
-                        modifier = Modifier.size(13.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "Probe",
-                        color = VhoqxethTextPrimary,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            }
-        }
-    }
-}
 
 @Composable
 private fun ProfileDetailsSheet(
@@ -1076,13 +977,14 @@ private fun ActiveContactsRow(
         contentPadding = PaddingValues(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // "My Story / New Status" Item
+        // "Add Peer / Contact" Action Item
         item {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
                     .clickable(onClick = onAddStatusClick)
                     .width(62.dp)
+                    .testTag("add_peer_roster_button")
             ) {
                 Box(
                     modifier = Modifier.size(54.dp),
@@ -1096,8 +998,8 @@ private fun ActiveContactsRow(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "New Status",
+                            imageVector = Icons.Default.PersonAdd,
+                            contentDescription = "Add Contact",
                             tint = VhoqxethCyanAccent,
                             modifier = Modifier.size(24.dp)
                         )
@@ -1105,7 +1007,7 @@ private fun ActiveContactsRow(
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "My Key",
+                    text = "Add Peer",
                     color = VhoqxethTextSecondary,
                     fontSize = 11.sp,
                     maxLines = 1,

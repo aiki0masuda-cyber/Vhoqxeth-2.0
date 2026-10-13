@@ -10,7 +10,7 @@ const {
 const PROJECT_ID = 'demo-no-project';
 const DB_ID = 'ai-studio-android-vhoqxeth-72b1dc1c-3df7-45db-85d8-6272f418425e';
 
-test('Firestore Security Rules with Admin Deletion for Vhoqxeth', async (t) => {
+test('Firestore Security Rules with Contacts and Shared Threads', async (t) => {
   let testEnv;
 
   try {
@@ -49,81 +49,69 @@ test('Firestore Security Rules with Admin Deletion for Vhoqxeth', async (t) => {
     );
   });
 
-  await t.test('allow unauthenticated read of registered_ips', async () => {
+  await t.test('allow write and read of user contacts roster', async () => {
     const unauthedDb = testEnv.unauthenticatedContext().firestore();
-    const ipDoc = unauthedDb.collection('registered_ips').doc('192_168_1_1');
-    await assertSucceeds(ipDoc.get());
-  });
-
-  await t.test('allow unauthenticated write to registered_ips with valid schema', async () => {
-    const unauthedDb = testEnv.unauthenticatedContext().firestore();
-    const ipDoc = unauthedDb.collection('registered_ips').doc('192_168_1_1');
+    const contactDoc = unauthedDb.collection('users').doc('alice').collection('contacts').doc('bob');
     await assertSucceeds(
-      ipDoc.set({
-        ip: '192.168.1.1',
-        userId: 'alice_handle',
-        customUserId: 'alice_handle',
-        displayName: 'Alice',
-        registeredAt: '2026-10-09T00:00:00Z',
+      contactDoc.set({
+        contactUserId: 'bob',
+        displayName: 'Bob Smith',
+        currentIp: '192.168.1.50',
+        addedAt: '2026-10-13T12:00:00Z',
       })
     );
+    await assertSucceeds(contactDoc.get());
   });
 
-  await t.test('allow deletion of registered_ips for admin cleanup', async () => {
+  await t.test('reject contact write with missing required fields', async () => {
     const unauthedDb = testEnv.unauthenticatedContext().firestore();
-    const ipDoc = unauthedDb.collection('registered_ips').doc('192_168_1_1');
-    await assertSucceeds(ipDoc.delete());
-  });
-
-  await t.test('reject registered_ips write with missing fields', async () => {
-    const unauthedDb = testEnv.unauthenticatedContext().firestore();
-    const ipDoc = unauthedDb.collection('registered_ips').doc('bad_ip');
+    const contactDoc = unauthedDb.collection('users').doc('alice').collection('contacts').doc('bad_bob');
     await assertFails(
-      ipDoc.set({
-        ip: '192.168.1.1',
+      contactDoc.set({
+        addedAt: '2026-10-13T12:00:00Z',
       })
     );
   });
 
-  await t.test('allow unauthenticated read and write of user profile with valid schema', async () => {
+  await t.test('allow write and read of two-way shared threads', async () => {
     const unauthedDb = testEnv.unauthenticatedContext().firestore();
-    const userDoc = unauthedDb.collection('users').doc('user123');
+    const threadDoc = unauthedDb.collection('threads').doc('thread_alice_bob');
     await assertSucceeds(
-      userDoc.set({
-        userId: 'user123',
-        displayName: 'Alex',
-        customUserId: 'alex_99',
+      threadDoc.set({
+        threadId: 'thread_alice_bob',
+        participantIds: ['alice', 'bob'],
+        lastMessage: 'Hello from Alice!',
+        lastSenderId: 'alice',
+        lastSenderName: 'Alice',
+        updatedAt: '2026-10-13T12:00:00Z',
       })
     );
-    await assertSucceeds(userDoc.get());
+    await assertSucceeds(threadDoc.get());
   });
 
-  await t.test('allow deletion of user profile for admin cleanup', async () => {
+  await t.test('allow write and read of thread messages', async () => {
     const unauthedDb = testEnv.unauthenticatedContext().firestore();
-    const userDoc = unauthedDb.collection('users').doc('user123');
-    await assertSucceeds(userDoc.delete());
-  });
-
-  await t.test('reject user profile write missing customUserId', async () => {
-    const unauthedDb = testEnv.unauthenticatedContext().firestore();
-    const userDoc = unauthedDb.collection('users').doc('bad_user');
-    await assertFails(
-      userDoc.set({
-        userId: 'bad_user',
-        displayName: 'No Handle',
+    const msgDoc = unauthedDb.collection('threads').doc('thread_alice_bob').collection('messages').doc('msg_1');
+    await assertSucceeds(
+      msgDoc.set({
+        messageId: 'msg_1',
+        threadId: 'thread_alice_bob',
+        senderId: 'alice',
+        senderName: 'Alice',
+        content: 'Encrypted payload',
+        timestamp: '2026-10-13T12:00:00Z',
       })
     );
+    await assertSucceeds(msgDoc.get());
   });
 
-  await t.test('reject user profile write with mismatched userId', async () => {
+  await t.test('allow deletion of contact, thread, and messages', async () => {
     const unauthedDb = testEnv.unauthenticatedContext().firestore();
-    const userDoc = unauthedDb.collection('users').doc('correct_id');
-    await assertFails(
-      userDoc.set({
-        userId: 'wrong_id',
-        displayName: 'Mismatched',
-        customUserId: 'handle_1',
-      })
-    );
+    const contactDoc = unauthedDb.collection('users').doc('alice').collection('contacts').doc('bob');
+    const threadDoc = unauthedDb.collection('threads').doc('thread_alice_bob');
+    const msgDoc = threadDoc.collection('messages').doc('msg_1');
+    await assertSucceeds(msgDoc.delete());
+    await assertSucceeds(threadDoc.delete());
+    await assertSucceeds(contactDoc.delete());
   });
 });

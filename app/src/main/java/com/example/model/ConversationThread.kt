@@ -1,7 +1,5 @@
 package com.example.model
 
-import androidx.compose.ui.graphics.Color
-
 enum class MessageStatus {
     NONE,
     SENT,
@@ -26,10 +24,10 @@ enum class SnippetType {
 }
 
 data class ConversationThread(
-    val id: String,
-    val name: String,
-    val lastMessage: String,
-    val timestamp: String,
+    val id: String = "",
+    val name: String = "",
+    val lastMessage: String = "",
+    val timestamp: String = "",
     val unreadCount: Int = 0,
     val isOnline: Boolean = false,
     val isPinned: Boolean = false,
@@ -37,20 +35,22 @@ data class ConversationThread(
     val isVerified: Boolean = false,
     val isGroup: Boolean = false,
     val category: ConversationCategory = ConversationCategory.DIRECT,
-    val avatarInitials: String,
-    val avatarColorStart: Long,
-    val avatarColorEnd: Long,
+    val avatarInitials: String = "",
+    val avatarColorStart: Long = 0xFF4F46E5,
+    val avatarColorEnd: Long = 0xFF2563EB,
     val lastSenderName: String? = null,
+    val lastSenderId: String? = null,
+    val participantIds: List<String> = emptyList(),
     val messageStatus: MessageStatus = MessageStatus.READ,
     val snippetType: SnippetType = SnippetType.TEXT
 )
 
 data class ActiveContact(
-    val id: String,
-    val name: String,
-    val initials: String,
-    val isOnline: Boolean,
-    val hasStory: Boolean,
-    val colorStart: Long,
-    val colorEnd: Long
+    val id: String = "",
+    val name: String = "",
+    val initials: String = "",
+    val isOnline: Boolean = false,
+    val hasStory: Boolean = false,
+    val colorStart: Long = 0xFF4F46E5,
+    val colorEnd: Long = 0xFF2563EB
 )
