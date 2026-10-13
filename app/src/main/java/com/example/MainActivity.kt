@@ -11,6 +11,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -27,6 +28,7 @@ import com.example.model.UserProfile
 import com.example.ui.admin.AdminPortalScreen
 import com.example.ui.auth.AuthGatewayScreen
 import com.example.ui.chat.ChatListScreen
+import com.example.ui.legal.LegalConsentScreen
 import com.example.ui.splash.SplashScreen
 import com.example.ui.theme.VhoqxethDarkBg
 import com.example.ui.theme.VhoqxethTheme
@@ -34,6 +36,7 @@ import kotlinx.coroutines.launch
 
 enum class AppScreen {
     SPLASH,
+    LEGAL_CONSENT,
     AUTH,
     CHAT_LIST,
     ADMIN_PORTAL
@@ -47,7 +50,7 @@ class MainActivity : ComponentActivity() {
             VhoqxethTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = VhoqxethDarkBg
+                    color = MaterialTheme.colorScheme.background
                 ) {
                     VhoqxethApp()
                 }
@@ -97,10 +100,21 @@ fun VhoqxethApp() {
                                     Log.w("MainActivity", "Background IP sync skipped: ${e.message}")
                                 }
                             }
+                        } else if (!sessionManager.hasAcceptedTerms()) {
+                            // First boot: present protocol governance with Privacy Policy and Terms & Conditions tabs
+                            currentScreen = AppScreen.LEGAL_CONSENT
                         } else {
-                            // First run or logged out: present login or signup gateway
+                            // Subsequent boot before login: present login or signup gateway
                             currentScreen = AppScreen.AUTH
                         }
+                    }
+                )
+            }
+            AppScreen.LEGAL_CONSENT -> {
+                LegalConsentScreen(
+                    onAcceptTerms = {
+                        sessionManager.setTermsAccepted(true)
+                        currentScreen = AppScreen.AUTH
                     }
                 )
             }

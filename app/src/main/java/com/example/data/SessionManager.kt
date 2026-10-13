@@ -14,6 +14,14 @@ class SessionManager(context: Context) {
         Context.MODE_PRIVATE
     )
 
+    fun hasAcceptedTerms(): Boolean {
+        return prefs.getBoolean(KEY_TERMS_ACCEPTED, false)
+    }
+
+    fun setTermsAccepted(accepted: Boolean = true) {
+        prefs.edit().putBoolean(KEY_TERMS_ACCEPTED, accepted).apply()
+    }
+
     fun isLoggedIn(): Boolean {
         return prefs.getBoolean(KEY_IS_LOGGED_IN, false) &&
                 !prefs.getString(KEY_CUSTOM_USER_ID, null).isNullOrBlank()
@@ -64,14 +72,17 @@ class SessionManager(context: Context) {
     }
 
     fun clearSession() {
+        val accepted = hasAcceptedTerms()
         prefs.edit().apply {
             clear()
+            putBoolean(KEY_TERMS_ACCEPTED, accepted)
             apply()
         }
     }
 
     companion object {
         private const val PREFS_NAME = "vhoqxeth_session"
+        private const val KEY_TERMS_ACCEPTED = "terms_accepted_v1"
         private const val KEY_IS_LOGGED_IN = "is_logged_in"
         private const val KEY_USER_ID = "user_id"
         private const val KEY_CUSTOM_USER_ID = "custom_user_id"

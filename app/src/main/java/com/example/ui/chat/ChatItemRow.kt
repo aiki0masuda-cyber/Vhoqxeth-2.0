@@ -261,11 +261,7 @@ fun ChatItemRow(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
-                        .background(
-                            Brush.horizontalGradient(
-                                listOf(VhoqxethPrimaryViolet, VhoqxethPrimaryVioletBright)
-                            )
-                        )
+                        .background(VhoqxethPrimaryViolet)
                         .padding(horizontal = 7.dp, vertical = 2.dp),
                     contentAlignment = Alignment.Center
                 ) {

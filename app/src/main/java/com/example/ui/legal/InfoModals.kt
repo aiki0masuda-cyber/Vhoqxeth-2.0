@@ -46,7 +46,9 @@ import com.example.model.LegalSection
 import com.example.ui.theme.VhoqxethBorder
 import com.example.ui.theme.VhoqxethCyanAccent
 import com.example.ui.theme.VhoqxethCyanBright
+import com.example.ui.theme.VhoqxethIndigo600
 import com.example.ui.theme.VhoqxethPrimaryViolet
+import com.example.ui.theme.VhoqxethSlate900
 import com.example.ui.theme.VhoqxethSurface
 import com.example.ui.theme.VhoqxethSurfaceElevated
 import com.example.ui.theme.VhoqxethTextMuted
@@ -90,9 +92,7 @@ fun AboutAppSheet(
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
-                            .background(
-                                Brush.linearGradient(listOf(VhoqxethPrimaryViolet, VhoqxethCyanAccent))
-                            ),
+                            .background(VhoqxethIndigo600),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -112,7 +112,7 @@ fun AboutAppSheet(
                         )
                         Text(
                             text = "QUANTUM PROTOCOL SPECIFICATION",
-                            color = VhoqxethCyanAccent,
+                            color = VhoqxethIndigo600,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.SemiBold,
                             letterSpacing = 1.sp
@@ -149,7 +149,7 @@ fun AboutAppSheet(
 
             Text(
                 text = "CORE PROTOCOL CAPABILITIES",
-                color = VhoqxethCyanBright,
+                color = VhoqxethIndigo600,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 1.sp,
@@ -271,7 +271,7 @@ fun LegalViewerSheet(
                     )
                     Text(
                         text = subtitle,
-                        color = VhoqxethCyanAccent,
+                        color = VhoqxethIndigo600,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.SemiBold,
                         letterSpacing = 1.sp
@@ -306,7 +306,7 @@ fun LegalViewerSheet(
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text(
                             text = section.title,
-                            color = VhoqxethCyanBright,
+                            color = VhoqxethSlate900,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold
                         )

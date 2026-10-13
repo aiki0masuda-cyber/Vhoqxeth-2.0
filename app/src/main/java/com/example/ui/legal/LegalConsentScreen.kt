@@ -61,8 +61,10 @@ import com.example.ui.theme.VhoqxethBorder
 import com.example.ui.theme.VhoqxethCyanAccent
 import com.example.ui.theme.VhoqxethCyanBright
 import com.example.ui.theme.VhoqxethDarkBg
+import com.example.ui.theme.VhoqxethIndigo600
 import com.example.ui.theme.VhoqxethPrimaryViolet
 import com.example.ui.theme.VhoqxethPrimaryVioletBright
+import com.example.ui.theme.VhoqxethSlate900
 import com.example.ui.theme.VhoqxethSurface
 import com.example.ui.theme.VhoqxethSurfaceElevated
 import com.example.ui.theme.VhoqxethTextMuted
@@ -99,12 +101,7 @@ fun LegalConsentScreen(
                     modifier = Modifier
                         .size(56.dp)
                         .clip(CircleShape)
-                        .background(
-                            Brush.linearGradient(
-                                listOf(VhoqxethPrimaryViolet, VhoqxethCyanAccent)
-                            )
-                        )
-                        .border(1.5.dp, VhoqxethPrimaryVioletBright, CircleShape),
+                        .background(VhoqxethIndigo600),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -128,7 +125,7 @@ fun LegalConsentScreen(
 
                 Text(
                     text = "PLEASE REVIEW LEGAL TERMS BEFORE FIRST LOGIN",
-                    color = VhoqxethCyanAccent,
+                    color = VhoqxethIndigo600,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
                     letterSpacing = 1.sp
@@ -143,7 +140,7 @@ fun LegalConsentScreen(
                 indicator = { tabPositions ->
                     TabRowDefaults.SecondaryIndicator(
                         Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
-                        color = VhoqxethCyanAccent
+                        color = VhoqxethIndigo600
                     )
                 },
                 modifier = Modifier
@@ -158,14 +155,14 @@ fun LegalConsentScreen(
                             Icon(
                                 imageVector = Icons.Default.Policy,
                                 contentDescription = null,
-                                tint = if (selectedTab == 0) VhoqxethCyanAccent else VhoqxethTextMuted,
+                                tint = if (selectedTab == 0) VhoqxethIndigo600 else VhoqxethTextMuted,
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 "Privacy Policy",
                                 fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Normal,
-                                color = if (selectedTab == 0) VhoqxethCyanBright else VhoqxethTextSecondary,
+                                color = if (selectedTab == 0) VhoqxethIndigo600 else VhoqxethTextSecondary,
                                 fontSize = 13.sp
                             )
                         }
@@ -180,14 +177,14 @@ fun LegalConsentScreen(
                             Icon(
                                 imageVector = Icons.Default.Gavel,
                                 contentDescription = null,
-                                tint = if (selectedTab == 1) VhoqxethCyanAccent else VhoqxethTextMuted,
+                                tint = if (selectedTab == 1) VhoqxethIndigo600 else VhoqxethTextMuted,
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 "Terms & Conditions",
                                 fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal,
-                                color = if (selectedTab == 1) VhoqxethCyanBright else VhoqxethTextSecondary,
+                                color = if (selectedTab == 1) VhoqxethIndigo600 else VhoqxethTextSecondary,
                                 fontSize = 13.sp
                             )
                         }
@@ -293,7 +290,7 @@ private fun LegalSectionCard(section: LegalSection) {
         ) {
             Text(
                 text = section.title,
-                color = VhoqxethCyanBright,
+                color = VhoqxethSlate900,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold
             )

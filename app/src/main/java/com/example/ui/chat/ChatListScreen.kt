@@ -227,12 +227,8 @@ fun ChatListScreen(
                             modifier = Modifier
                                 .size(38.dp)
                                 .clip(CircleShape)
-                                .background(
-                                    Brush.linearGradient(
-                                        listOf(VhoqxethPrimaryViolet, VhoqxethCyanAccent)
-                                    )
-                                )
-                                .border(1.5.dp, VhoqxethPrimaryVioletBright, CircleShape),
+                                .background(VhoqxethPrimaryViolet)
+                                .border(1.dp, VhoqxethBorder, CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
@@ -937,11 +933,7 @@ private fun ProfileDetailsSheet(
             modifier = Modifier
                 .size(64.dp)
                 .clip(CircleShape)
-                .background(
-                    Brush.linearGradient(
-                        listOf(VhoqxethPrimaryViolet, VhoqxethCyanAccent)
-                    )
-                ),
+                .background(VhoqxethPrimaryViolet),
             contentAlignment = Alignment.Center
         ) {
             Text(

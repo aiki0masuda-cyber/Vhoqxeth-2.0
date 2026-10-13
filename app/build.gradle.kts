@@ -1,4 +1,3 @@
-```kotlin
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
 
 plugins {
@@ -154,4 +153,3 @@ dependencies {
 tasks.withType<Test> {
     failFast = true
 }
-```

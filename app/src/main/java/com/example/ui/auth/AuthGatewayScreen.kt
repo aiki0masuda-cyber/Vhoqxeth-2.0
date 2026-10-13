@@ -197,9 +197,7 @@ fun AuthGatewayScreen(
                         modifier = Modifier
                             .size(28.dp)
                             .clip(CircleShape)
-                            .background(
-                                Brush.linearGradient(listOf(VhoqxethPrimaryViolet, VhoqxethCyanAccent))
-                            ),
+                            .background(VhoqxethPrimaryViolet),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -227,7 +225,7 @@ fun AuthGatewayScreen(
                         Icon(
                             imageVector = Icons.Default.MoreVert,
                             contentDescription = "Menu Options",
-                            tint = VhoqxethCyanAccent
+                            tint = VhoqxethTextPrimary
                         )
                     }
 
@@ -298,12 +296,8 @@ fun AuthGatewayScreen(
                 modifier = Modifier
                     .size(68.dp)
                     .clip(CircleShape)
-                    .background(
-                        Brush.linearGradient(
-                            listOf(VhoqxethPrimaryViolet, VhoqxethCyanAccent)
-                        )
-                    )
-                    .border(2.dp, VhoqxethPrimaryVioletBright, CircleShape),
+                    .background(VhoqxethPrimaryViolet)
+                    .border(1.dp, VhoqxethBorder, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(

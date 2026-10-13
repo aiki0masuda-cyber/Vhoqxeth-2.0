@@ -7,45 +7,49 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-private val DarkColorScheme = darkColorScheme(
-    primary = VhoqxethPrimaryViolet,
-    onPrimary = VhoqxethTextPrimary,
-    primaryContainer = VhoqxethSurfaceElevated,
-    onPrimaryContainer = VhoqxethPrimaryVioletBright,
-    secondary = VhoqxethCyanAccent,
-    onSecondary = VhoqxethDeepBlack,
-    secondaryContainer = VhoqxethSurfaceHighlight,
-    onSecondaryContainer = VhoqxethCyanBright,
-    tertiary = VhoqxethNeonMagenta,
-    onTertiary = VhoqxethTextPrimary,
-    background = VhoqxethDarkBg,
-    onBackground = VhoqxethTextPrimary,
-    surface = VhoqxethDarkBg,
-    onSurface = VhoqxethTextPrimary,
-    surfaceVariant = VhoqxethSurface,
-    onSurfaceVariant = VhoqxethTextSecondary,
-    outline = VhoqxethBorder
+private val LightColorScheme = lightColorScheme(
+    primary = VhoqxethIndigo600,
+    onPrimary = Color.White,
+    primaryContainer = VhoqxethCardLightAlt,
+    onPrimaryContainer = VhoqxethIndigo700,
+    secondary = VhoqxethCobalt600,
+    onSecondary = Color.White,
+    secondaryContainer = VhoqxethCardLightAlt,
+    onSecondaryContainer = VhoqxethCobalt600,
+    tertiary = VhoqxethRose600,
+    onTertiary = Color.White,
+    background = VhoqxethCanvasLight,
+    onBackground = VhoqxethSlate900,
+    surface = VhoqxethCardLight,
+    onSurface = VhoqxethSlate900,
+    surfaceVariant = VhoqxethCardLightAlt,
+    onSurfaceVariant = VhoqxethSlate600,
+    outline = VhoqxethBorderLight
 )
 
-private val LightColorScheme = darkColorScheme(
-    // Vhoqxeth defaults to modern dark theme aesthetic, with high contrast
-    primary = VhoqxethPrimaryViolet,
-    onPrimary = VhoqxethTextPrimary,
-    primaryContainer = VhoqxethSurfaceElevated,
-    onPrimaryContainer = VhoqxethPrimaryVioletBright,
-    secondary = VhoqxethCyanAccent,
-    onSecondary = VhoqxethDeepBlack,
-    background = VhoqxethDarkBg,
-    onBackground = VhoqxethTextPrimary,
-    surface = VhoqxethDarkBg,
-    onSurface = VhoqxethTextPrimary,
-    surfaceVariant = VhoqxethSurface,
-    onSurfaceVariant = VhoqxethTextSecondary,
-    outline = VhoqxethBorder
+private val DarkColorScheme = darkColorScheme(
+    primary = VhoqxethIndigo500,
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFF1E293B),
+    onPrimaryContainer = Color(0xFFA5B4FC),
+    secondary = VhoqxethCobalt500,
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFF1E293B),
+    onSecondaryContainer = Color(0xFF93C5FD),
+    tertiary = Color(0xFFFB7185),
+    onTertiary = Color.White,
+    background = Color(0xFF0F172A),
+    onBackground = Color(0xFFF8FAFC),
+    surface = Color(0xFF1E293B),
+    onSurface = Color(0xFFF8FAFC),
+    surfaceVariant = Color(0xFF334155),
+    onSurfaceVariant = Color(0xFF94A3B8),
+    outline = Color(0xFF475569)
 )
 
 @Composable
@@ -62,8 +66,9 @@ fun VhoqxethTheme(
             if (window != null) {
                 window.statusBarColor = colorScheme.background.toArgb()
                 window.navigationBarColor = colorScheme.background.toArgb()
-                WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
-                WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = false
+                // Light theme requires dark status and nav bar icons
+                WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+                WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = !darkTheme
             }
         }
     }

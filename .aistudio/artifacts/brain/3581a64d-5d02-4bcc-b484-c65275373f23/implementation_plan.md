@@ -1,113 +1,119 @@
-# Legal Consent Onboarding & Top Navigation Menu
+# Clean, Readable Light Theme Transformation
 
-Implementation plan for adding a top navigation bar with a three-dot overflow menu ("About the App", "Privacy Policy", "Terms & Conditions") and a first-boot tabbed consent onboarding screen before login or signup.
+Transition the Vhoqxeth interface from neon/glowing cyberpunk styling to a polished, modern, highly legible light theme featuring crisp white canvases, soft warm-gray elevation cards, deep indigo primary accents, and responsive layout scaling across all screen sizes.
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> The following requirements have been confirmed via Phase 1 clarification:
-> - **First-Boot Policy Display**: On the first launch, the app presents an onboarding consent screen with tabs for **Privacy Policy** and **Terms & Conditions** before revealing the login/signup gateway.
-> - **Top Bar Three-Dot Menu**: The top navbar includes a three-dot menu containing "About the App", "Privacy Policy", and "Terms & Conditions".
-> - **Admin Stealth Rule**: "About the App" strictly highlights user-facing features (quantum encryption, IP identity, peer-to-peer messaging) and **must not list or disclose** the admin panel or masterkey.
-
-- **Confirmed Decision 1**: Store `hasAcceptedTerms` locally in `SessionManager` so the introductory consent screen only appears on the very first boot.
-- **Confirmed Decision 2**: Provide full-screen modal sheets with formatted sections when menu items ("About the App", "Privacy Policy", "Terms & Conditions") are selected from the three-dot menu.
-- **Confirmed Decision 3**: Retain the hidden 7-tap gesture on the IP pill with `P@ssw0rd` masterkey for the Admin Portal without leaking its existence in any public copy.
+> The following design and product directions were confirmed via interactive consultation:
+> - **Canvas & Surface Palette**: Crisp white canvas (`#FFFFFF` / `#F8FAFC`) with soft warm-gray cards (`#F1F5F9` / `#FFFFFF` with `#E2E8F0` borders).
+> - **Brand & Accent Style**: Deep indigo (`#4F46E5`) with crisp cobalt accents (`#2563EB`) replacing heavy neon cyan and magenta glows.
+> - **Theme Mode Hierarchy**: Clean light theme is the default experience, while fully supporting system dark mode seamlessly through dynamic Material 3 color schemes.
+> - **Build Environment Fix**: Strip accidental markdown backticks from `app/build.gradle.kts` so automated builds and CI runs remain healthy.
 
 ---
 
 ## 1. Overview & Core Concept
 
-- **What It Does**: Introduces a compliance and informational layer to Vhoqxeth. First-time users review and accept the Privacy Policy and Terms of Service via a clean, tabbed interface before proceeding to IP detection and account creation. The auth gateway now features a top navigation bar with a three-dot overflow menu allowing users to inspect app features, privacy commitments, and terms at any time.
-- **Target Audience / Persona**: Users who value transparency regarding data handling and cryptography before entering their device identity.
-- **Key Value**: Provides clear regulatory compliance, user transparency, and quick feature discovery while keeping administrative controls entirely unadvertised.
+- **What It Does**: Refactors the visual presentation layer across the entire application—Splash, Legal Consent, Auth Gateway, Main Chat List, and Admin Portal—to present clean, uncluttered, high-contrast layouts. Eliminates high-saturation glows, heavy neon gradients, and dense dark canvases in favor of airy, readable typography, subtle border delineation, and tactile Material 3 surfaces.
+- **Target Audience / Persona**: Users seeking a professional, distraction-free encrypted communication client that is effortless to read under daylight and low-light conditions.
+- **Key Value**: Drastically reduces visual fatigue, elevates typographic readability with compliant contrast ratios (WCAG AAA), and maintains instant visual hierarchy.
 
 ---
 
 ## 2. User Experience & Visual Design
 
 ### Key User Flows
+1. **Onboarding / First Boot**:
+   - Clean, illuminated screen displaying protocol governance with crisp tabs for **Privacy Policy** and **Terms & Conditions**.
+   - Distinct, legible card sections with soft borders instead of heavy neon glow.
+2. **IP Identity & Login Gateway**:
+   - Centered brand emblem with a clean deep-indigo badge displaying the detected device IP.
+   - Clean text fields with high-contrast text entry and crisp focus outlines.
+   - Preserves the secret 7-tap gesture on the IP banner to open the Masterkey prompt for the Admin Portal.
+3. **Conversations Dashboard**:
+   - Clean, bright top app bar with subtle divider.
+   - High-contrast avatar initials, clean search bar with soft rounded edges, and readable unread message badges.
+   - Three-dot overflow menu cleanly presenting "About the App", "Privacy Policy", and "Terms & Conditions" in soft modal bottom sheets.
+4. **Admin Portal**:
+   - Clean data tables and cards for user profiles, registered IP indexes, and connection probes, styled with readable neutral slate tones.
 
-1. **First-Boot Legal Onboarding**:
-   - App launches splash screen.
-   - If not logged in and `hasAcceptedTerms == false`:
-   - Transitions to `LegalConsentScreen` displaying:
-     - Header: "Vhoqxeth Network Protocol Governance".
-     - Tab row: **Privacy Policy** | **Terms & Conditions**.
-     - Scrollable rich text explaining zero-telemetry policies, decentralized storage, and usage obligations.
-     - Bottom pinned action: "Accept & Continue" button (disabled until tab viewed, or immediately enabled with clear consent).
-     - Once accepted, sets `hasAcceptedTerms = true` in `SessionManager` and transitions to `AuthGatewayScreen`.
-2. **Auth Gateway Navbar & Three-Dot Overflow Menu**:
-   - Top bar contains:
-     - Left: Brand mark with encrypted enclave badge.
-     - Right: Three-dot overflow menu button (`MoreVert` icon).
-   - Tapping the icon opens the dropdown menu with:
-     - ℹ️ **About the App**: Opens modal dialog/sheet showcasing core features:
-       - Quantum-grade end-to-end messaging encryption.
-       - Zero-trust device IP routing & roaming support.
-       - Decentralized ephemeral message channels.
-       - Cross-device profile synchronization.
-       - *(Explicitly omits any mention of admin console or masterkey).*
-     - 🛡️ **Privacy Policy**: Opens full Privacy Policy sheet.
-     - 📜 **Terms & Conditions**: Opens full Terms & Conditions sheet.
-3. **Subsequent Boots**:
-   - If already logged in, splash screen immediately opens `ChatListScreen` as before.
-   - If logged out, directly opens `AuthGatewayScreen` (skipping the legal onboarding since terms were previously accepted).
+### Visual Identity & Theme Tokens
+```
+┌─────────────────────────┬──────────────────────────┬──────────────────────────┐
+│ Semantic Token          │ Light Mode (Default)     │ Dark Mode (Optional)     │
+├─────────────────────────┼──────────────────────────┼──────────────────────────┤
+│ background              │ #F8FAFC (Slate 50)       │ #0F172A (Slate 900)      │
+│ surface                 │ #FFFFFF (Crisp White)    │ #1E293B (Slate 800)      │
+│ surfaceVariant          │ #F1F5F9 (Slate 100)      │ #334155 (Slate 700)      │
+│ primary                 │ #4F46E5 (Indigo 600)     │ #818CF8 (Indigo 400)     │
+│ onPrimary               │ #FFFFFF (Pure White)     │ #0F172A (Slate 900)      │
+│ secondary               │ #2563EB (Cobalt 600)     │ #60A5FA (Blue 400)       │
+│ outline                 │ #E2E8F0 (Slate 200)      │ #475569 (Slate 600)      │
+│ textPrimary             │ #0F172A (Slate 900)      │ #F8FAFC (Slate 50)       │
+│ textSecondary           │ #475569 (Slate 600)      │ #94A3B8 (Slate 400)      │
+│ textMuted               │ #64748B (Slate 500)      │ #64748B (Slate 500)      │
+│ statusOnline            │ #10B981 (Emerald 500)    │ #34D399 (Emerald 400)    │
+└─────────────────────────┴──────────────────────────┴──────────────────────────┘
+```
 
-### Visual Identity & Theme
-- Consistent with the Vhoqxeth cyberpunk dark theme (`#0D0B14`, `#7C4DFF`, `#00E5FF`, `#1B1829`).
-- Custom styling for dropdown menu and legal tabs with subtle neon indicators and clean typography.
+### Typography & Hierarchy
+- **Display & Titles**: Bold sans-serif with natural letter-spacing (0.2.sp) in deep slate (`#0F172A`).
+- **Body & Captions**: Clean, open counterforms with generous line height (18–22.sp) for instant readability.
+- **Card Styling**: 10–14.dp rounded corners, subtle 1.dp border (`#E2E8F0`), and soft surface elevation without artificial blur glows.
 
 ---
 
 ## 3. Key Product Decisions & Trade-Offs
 
-- **Decision 1: Persistence of Acceptance State in `SessionManager`**
-  - *Chosen Approach*: Add `hasAcceptedTerms(): Boolean` and `setAcceptedTerms(true)` to `SessionManager`.
-  - *Why*: Synchronous zero-latency check during splash boot; does not block the app launch.
-- **Decision 2: Comprehensive Legal Content Formatting**
-  - *Chosen Approach*: Store structured legal copy in a dedicated `LegalContent.kt` object with clean markdown-like card sections for readability.
-  - *Why*: Separates legal text from UI composables, making updates straightforward and readable.
-- **Decision 3: Stealth Admin Preservation**
-  - *Chosen Approach*: The three-dot menu and "About the App" dialog strictly contain user-facing product information. The 7-tap gesture on the IP pill remains the exclusive trigger for the Admin Portal.
-  - *Why*: Directly honors the user's explicit instruction: *"admin panels is not listed"*.
+- **Decision 1: Semantic Theme Centralization**:
+  - *Chosen Approach*: Refactor `Color.kt` and `Theme.kt` so that all app screens dynamically resolve colors via `MaterialTheme.colorScheme` and semantic constants rather than hardcoded `VhoqxethDarkBg` hex constants.
+  - *Why*: Enables seamless switching between light and dark modes according to system preference, while guaranteeing light mode as the default.
+  - *Alternatives Considered*: Hardcoding a single static light theme would break system dark theme ergonomics.
+
+- **Decision 2: Elimination of High-Glow & Neon Filters**:
+  - *Chosen Approach*: Replace neon violet and cyan glowing borders with refined 1.dp borders (`#E2E8F0` in light mode, `#334155` in dark mode) and subtle indigo pills.
+  - *Why*: Directly satisfies the user's explicit requirement for "no high glow or neon just light and clean but attractive and responsive".
+
+- **Decision 3: Strict Functional Preservation**:
+  - *Chosen Approach*: Retain 100% of the existing business logic: IP resolution fallback, Firebase Firestore IP index linking, SessionManager state caching, 7-tap backdoor to Admin Portal with `P@ssw0rd` masterkey, and legal tabs on first boot.
+  - *Why*: Visual refactoring must never compromise existing features or security checks.
 
 ---
 
-## 4. Technical Architecture & Data Strategy
+## 4. Technical Architecture & Component Structure
 
-### Component Architecture
-
+### Component Hierarchy
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│                              MainActivity                              │
-└───────────────────────────────────┬────────────────────────────────────┘
-                                    │
-               ┌────────────────────┼────────────────────┐
-               ▼                    ▼                    ▼
-   ┌───────────────────────┐ ┌──────────────┐ ┌─────────────────────────┐
-   │     SplashScreen      │ │ChatListScreen│ │   LegalConsentScreen    │
-   │  - isLoggedIn?        │ └──────────────┘ │   (First-boot only)     │
-   │  - hasAcceptedTerms?  │                  └───────────┬─────────────┘
-   └───────────┬───────────┘                              │ (Accept)
-               │                                          ▼
-               │                              ┌─────────────────────────┐
-               └─────────────────────────────▶│    AuthGatewayScreen    │
-                                              │ - Top Navbar            │
-                                              │ - 3-Dot Overflow Menu   │
-                                              │   ├─ About App Sheet    │
-                                              │   ├─ Privacy Sheet      │
-                                              │   └─ Terms Sheet        │
-                                              │ - 7-Tap IP Admin Portal │
-                                              └─────────────────────────┘
+┌────────────────────────────────────────────────────────┐
+│                      MainActivity                      │
+│                 (VhoqxethTheme Wrapper)                │
+└───────────────────────────┬────────────────────────────┘
+                            │
+       ┌────────────────────┼────────────────────┐
+       ▼                    ▼                    ▼
+┌──────────────┐   ┌─────────────────┐   ┌──────────────┐
+│ SplashScreen │   │ LegalConsent    │   │ AuthGateway  │
+│              │   │ Screen (Tabs)   │   │ Screen       │
+└──────────────┘   └─────────────────┘   └───────┬──────┘
+                                                 │ 7-tap IP
+                                                 ▼
+┌─────────────────────────────────────┐   ┌──────────────┐
+│ ChatListScreen                      │   │ AdminPortal  │
+│ ├─ TopAppBar (Actions & 3-dot Menu) │   │ Screen       │
+│ ├─ Active Network & Connection Pill │   └──────────────┘
+│ ├─ Search Bar & Category Filter Row │
+│ ├─ Conversation Thread Rows         │
+│ └─ About & Legal Sheets (Modals)    │
+└─────────────────────────────────────┘
 ```
 
-### Data Layer Specifications
-
-- **`SessionManager` Extensions**:
-  - `hasAcceptedTerms(): Boolean`
-  - `setAcceptedTerms(accepted: Boolean)`
-- **`LegalContent`**:
-  - `aboutAppFeatures: List<FeatureItem>`
-  - `privacyPolicySections: List<LegalSection>`
-  - `termsAndConditionsSections: List<LegalSection>`
+### File Refactoring Scope
+1. **`app/build.gradle.kts`**: Strip accidental markdown code blocks (` ```kotlin ` and ` ``` `).
+2. **`Color.kt`**: Introduce light theme palette (slate 50–900 scale, refined deep indigo, cobalt accents, emerald status).
+3. **`Theme.kt`**: Implement proper `lightColorScheme()` as default, coupled with dynamic `darkColorScheme()`.
+4. **`LegalConsentScreen.kt`**: Update backgrounds, tab indicators, cards, and buttons to use the clean light theme tokens.
+5. **`AuthGatewayScreen.kt`**: Update IP status banner, buttons, forms, and dialogs to clean light surfaces with crisp contrast.
+6. **`ChatListScreen.kt`**: Update center-aligned top bar, search text fields, category pills, conversation item cards, dropdown menus, and modal sheets.
+7. **`AdminPortalScreen.kt`**: Style user cards, IP cards, and probe logs with clean warm-gray surfaces and high-contrast labels.
+8. **Test Suite**: Run `gradle :app:testDebugUnitTest` to guarantee all tests continue to pass without regression.
