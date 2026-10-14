@@ -26,7 +26,7 @@
     },
     "UserProfile": {
       "title": "UserProfile",
-      "description": "User profile with display name, custom user ID handle, and associated IP addresses",
+      "description": "User profile with display name, custom user ID handle, salted password hash, optional details, and associated IP addresses",
       "type": "object",
       "properties": {
         "userId": {
@@ -35,11 +35,39 @@
         },
         "displayName": {
           "type": "string",
-          "description": "Display name of the user"
+          "description": "Visible display name of the user"
         },
         "customUserId": {
           "type": "string",
           "description": "Custom alphanumeric user handle"
+        },
+        "passwordHash": {
+          "type": "string",
+          "description": "Salted SHA-256 hash of user account password"
+        },
+        "passwordSalt": {
+          "type": "string",
+          "description": "Unique cryptographic salt used for password hashing"
+        },
+        "firstName": {
+          "type": "string",
+          "description": "Optional user first name"
+        },
+        "lastName": {
+          "type": "string",
+          "description": "Optional user last name"
+        },
+        "dateOfBirth": {
+          "type": "string",
+          "description": "Optional user date of birth"
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional user bio / description"
+        },
+        "hasCompletedOptionalSetup": {
+          "type": "boolean",
+          "description": "Whether user has seen or completed the post-login setup"
         },
         "associatedIps": {
           "type": "array",

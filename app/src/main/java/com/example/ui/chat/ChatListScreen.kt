@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.NotificationsOff
+import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.QrCodeScanner
@@ -115,10 +116,14 @@ import com.example.ui.theme.VhoqxethSurface
 import com.example.ui.theme.VhoqxethSurfaceElevated
 import com.example.ui.theme.VhoqxethTextMuted
 import com.example.ui.theme.VhoqxethTextPrimary
+import com.example.data.AuthRepository
+import com.example.data.SessionManager
 import com.example.model.LegalContent
 import com.example.model.UserProfile
+import com.example.ui.auth.OptionalProfileSetupSheet
 import com.example.ui.legal.AboutAppSheet
 import com.example.ui.legal.LegalViewerSheet
+import com.example.ui.settings.SettingsTabContent
 import com.example.ui.theme.VhoqxethTextSecondary
 import kotlinx.coroutines.launch
 
@@ -148,9 +153,17 @@ fun ChatListScreen(
     var showProfileSheet by remember { mutableStateOf(false) }
     var showConnectionDialog by remember { mutableStateOf(false) }
 
+    val authRepository = remember { AuthRepository(context) }
+    val sessionManager = remember { SessionManager(context) }
+    var currentUserState by remember { mutableStateOf(userProfile ?: sessionManager.getSavedUserProfile()) }
+
+    var showOptionalSetupModal by remember {
+        mutableStateOf(currentUserState != null && !currentUserState!!.hasCompletedOptionalSetup)
+    }
+
     // Firestore mesh chat repository & real-time streams
     val chatRepository = remember { MeshChatRepository(context) }
-    val currentHandle = userProfile?.customUserId?.trim()?.removePrefix("@")?.lowercase() ?: ""
+    val currentHandle = currentUserState?.customUserId?.trim()?.removePrefix("@")?.lowercase() ?: ""
     val liveContacts by chatRepository.observeContacts(currentHandle).collectAsState(initial = emptyList())
     val liveThreads by chatRepository.observeThreads(currentHandle).collectAsState(initial = emptyList())
 
@@ -162,7 +175,7 @@ fun ChatListScreen(
     var searchQuery by remember { mutableStateOf("") }
     var selectedFilter by remember { mutableStateOf(ConversationCategory.ALL) }
 
-    // Bottom Navigation selection
+    // Bottom Navigation selection (0: Chats, 1: Contacts, 2: Settings)
     var selectedBottomNavIndex by remember { mutableIntStateOf(0) }
 
     // Selected conversation for preview modal
@@ -179,9 +192,9 @@ fun ChatListScreen(
     var showPrivacyPolicySheet by remember { mutableStateOf(false) }
     var showTermsSheet by remember { mutableStateOf(false) }
 
-    // Handle back button when search or sheets are active
+    // Handle back button when search or sheets or secondary tabs are active
     BackHandler(
-        enabled = isSearchActive || selectedThread != null || showNewChatSheet ||
+        enabled = selectedBottomNavIndex != 0 || isSearchActive || selectedThread != null || showNewChatSheet ||
             showProfileSheet || showAboutAppSheet || showPrivacyPolicySheet || showTermsSheet || showAddContactDialog
     ) {
         when {
@@ -195,6 +208,9 @@ fun ChatListScreen(
             isSearchActive -> {
                 isSearchActive = false
                 searchQuery = ""
+            }
+            selectedBottomNavIndex != 0 -> {
+                selectedBottomNavIndex = 0
             }
         }
     }
@@ -274,12 +290,23 @@ fun ChatListScreen(
                 },
                 // APP NAME IN MIDDLE
                 title = {
+                    val headerTitle = when (selectedBottomNavIndex) {
+                        1 -> "Contacts"
+                        2 -> "Settings"
+                        else -> "Vhoqxeth"
+                    }
+                    val headerSubtitle = when (selectedBottomNavIndex) {
+                        1 -> "${liveContacts.size} Registered Peers"
+                        2 -> "@$currentHandle"
+                        else -> if (firestoreState is FirestoreConnectionState.Connected) "Firestore Connected" else "Connecting to DB..."
+                    }
+
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier.testTag("app_name_middle_container")
                     ) {
                         Text(
-                            text = "Vhoqxeth",
+                            text = headerTitle,
                             color = VhoqxethTextPrimary,
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
@@ -306,11 +333,7 @@ fun ChatListScreen(
                             )
                             Spacer(modifier = Modifier.width(5.dp))
                             Text(
-                                text = if (firestoreState is FirestoreConnectionState.Connected) {
-                                    "Firestore Connected"
-                                } else {
-                                    "Connecting to DB..."
-                                },
+                                text = headerSubtitle,
                                 color = VhoqxethCyanAccent,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Medium
@@ -447,10 +470,8 @@ fun ChatListScreen(
                     .testTag("main_bottom_nav_bar")
             ) {
                 val navItems = listOf(
-                    Triple("Chats", Icons.AutoMirrored.Filled.Chat, 8),
-                    Triple("Calls", Icons.Default.Call, 0),
-                    Triple("Channels", Icons.Default.Stream, 0),
-                    Triple("Vault", Icons.Default.Lock, 0),
+                    Triple("Chats", Icons.AutoMirrored.Filled.Chat, if (liveThreads.any { it.unreadCount > 0 }) liveThreads.sumOf { it.unreadCount } else 0),
+                    Triple("Contacts", Icons.Default.People, 0),
                     Triple("Settings", Icons.Default.Settings, 0)
                 )
 
@@ -460,11 +481,6 @@ fun ChatListScreen(
                         selected = isSelected,
                         onClick = {
                             selectedBottomNavIndex = index
-                            if (index != 0) {
-                                coroutineScope.launch {
-                                    snackbarHostState.showSnackbar("${item.first} section ready")
-                                }
-                            }
                         },
                         icon = {
                             if (item.third > 0) {
@@ -508,184 +524,236 @@ fun ChatListScreen(
             }
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { showAddContactDialog = true },
-                containerColor = VhoqxethPrimaryViolet,
-                contentColor = Color.White,
-                shape = CircleShape,
-                modifier = Modifier
-                    .padding(bottom = 12.dp)
-                    .testTag("new_chat_fab")
-            ) {
-                Icon(
-                    imageVector = Icons.Default.PersonAdd,
-                    contentDescription = "Add Contact by User ID",
-                    modifier = Modifier.size(26.dp)
-                )
+            if (selectedBottomNavIndex != 2) {
+                FloatingActionButton(
+                    onClick = { showAddContactDialog = true },
+                    containerColor = VhoqxethPrimaryViolet,
+                    contentColor = Color.White,
+                    shape = CircleShape,
+                    modifier = Modifier
+                        .padding(bottom = 12.dp)
+                        .testTag("new_chat_fab")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PersonAdd,
+                        contentDescription = "Add Contact by User ID",
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
             }
         }
     ) { innerPadding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Interactive Search Field (if toggled)
-            AnimatedVisibility(
-                visible = isSearchActive,
-                enter = fadeIn(),
-                exit = fadeOut()
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp)
-                ) {
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        placeholder = {
-                            Text("Search threads or contacts...", color = VhoqxethTextMuted)
-                        },
-                        singleLine = true,
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Search,
-                                contentDescription = "Search",
-                                tint = VhoqxethCyanAccent
+            when (selectedBottomNavIndex) {
+                0 -> {
+                    Column(
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        // Interactive Search Field (if toggled)
+                        AnimatedVisibility(
+                            visible = isSearchActive,
+                            enter = fadeIn(),
+                            exit = fadeOut()
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 6.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = searchQuery,
+                                    onValueChange = { searchQuery = it },
+                                    placeholder = {
+                                        Text("Search threads or contacts...", color = VhoqxethTextMuted)
+                                    },
+                                    singleLine = true,
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Search,
+                                            contentDescription = "Search",
+                                            tint = VhoqxethCyanAccent
+                                        )
+                                    },
+                                    trailingIcon = {
+                                        if (searchQuery.isNotEmpty()) {
+                                            IconButton(onClick = { searchQuery = "" }) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Close,
+                                                    contentDescription = "Clear",
+                                                    tint = VhoqxethTextMuted
+                                                )
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("search_input_field"),
+                                    shape = RoundedCornerShape(16.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedContainerColor = VhoqxethSurface,
+                                        unfocusedContainerColor = VhoqxethSurface,
+                                        focusedBorderColor = VhoqxethCyanAccent,
+                                        unfocusedBorderColor = VhoqxethBorder,
+                                        focusedTextColor = VhoqxethTextPrimary,
+                                        unfocusedTextColor = VhoqxethTextPrimary
+                                    )
+                                )
+                            }
+                        }
+
+                        // Active Contacts Horizontal Row (from live Firestore)
+                        val contactItems = liveContacts.map { c ->
+                            ActiveContact(
+                                id = c.contactUserId,
+                                name = c.displayName,
+                                initials = c.initials,
+                                isOnline = true,
+                                hasStory = false,
+                                colorStart = c.avatarColorStart,
+                                colorEnd = c.avatarColorEnd
                             )
-                        },
-                        trailingIcon = {
-                            if (searchQuery.isNotEmpty()) {
-                                IconButton(onClick = { searchQuery = "" }) {
-                                    Icon(
-                                        imageVector = Icons.Default.Close,
-                                        contentDescription = "Clear",
-                                        tint = VhoqxethTextMuted
+                        }
+
+                        ActiveContactsRow(
+                            contacts = contactItems,
+                            onAddStatusClick = { showAddContactDialog = true },
+                            onContactClick = { contact ->
+                                val threadId = chatRepository.generateThreadId(currentHandle, contact.id)
+                                val existing = liveThreads.firstOrNull { it.id == threadId }
+                                if (existing != null) {
+                                    selectedThread = existing
+                                } else {
+                                    selectedThread = ConversationThread(
+                                        id = threadId,
+                                        name = contact.name,
+                                        lastMessage = "Encrypted session ready",
+                                        avatarInitials = contact.initials,
+                                        avatarColorStart = contact.colorStart,
+                                        avatarColorEnd = contact.colorEnd,
+                                        participantIds = listOf(currentHandle, contact.id).sorted()
                                     )
                                 }
                             }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("search_input_field"),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = VhoqxethSurface,
-                            unfocusedContainerColor = VhoqxethSurface,
-                            focusedBorderColor = VhoqxethCyanAccent,
-                            unfocusedBorderColor = VhoqxethBorder,
-                            focusedTextColor = VhoqxethTextPrimary,
-                            unfocusedTextColor = VhoqxethTextPrimary
                         )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Filter Chips Row
+                        FilterChipsRow(
+                            selectedFilter = selectedFilter,
+                            onFilterSelected = { selectedFilter = it }
+                        )
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        // Conversation Threads List
+                        if (liveThreads.isEmpty() && searchQuery.isBlank()) {
+                            // Clean empty state card when new user account has zero chats
+                            EmptyChatState(
+                                onAddContactClick = { showAddContactDialog = true }
+                            )
+                        } else if (filteredThreads.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(32.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Icon(
+                                        imageVector = Icons.Default.Search,
+                                        contentDescription = "No results",
+                                        tint = VhoqxethTextMuted,
+                                        modifier = Modifier.size(48.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Text(
+                                        text = "No conversations found",
+                                        color = VhoqxethTextPrimary,
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "Try adjusting your search terms or filter category",
+                                        color = VhoqxethTextMuted,
+                                        fontSize = 13.sp,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            }
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .testTag("conversation_threads_list"),
+                                contentPadding = PaddingValues(bottom = 80.dp)
+                            ) {
+                                items(
+                                    items = filteredThreads,
+                                    key = { it.id }
+                                ) { thread ->
+                                    ChatItemRow(
+                                        thread = thread,
+                                        onClick = { selectedThread = thread }
+                                    )
+                                    HorizontalDivider(
+                                        modifier = Modifier.padding(start = 84.dp, end = 16.dp),
+                                        thickness = 0.5.dp,
+                                        color = VhoqxethBorder.copy(alpha = 0.5f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                1 -> {
+                    ContactsTabContent(
+                        contacts = liveContacts,
+                        onContactSelected = { contact ->
+                            val threadId = chatRepository.generateThreadId(currentHandle, contact.contactUserId)
+                            val existing = liveThreads.firstOrNull { it.id == threadId }
+                            if (existing != null) {
+                                selectedThread = existing
+                            } else {
+                                selectedThread = ConversationThread(
+                                    id = threadId,
+                                    name = contact.displayName,
+                                    lastMessage = "Encrypted session ready",
+                                    avatarInitials = contact.initials,
+                                    avatarColorStart = contact.avatarColorStart,
+                                    avatarColorEnd = contact.avatarColorEnd,
+                                    participantIds = listOf(currentHandle, contact.contactUserId).sorted()
+                                )
+                            }
+                        },
+                        onAddContactClick = { showAddContactDialog = true }
                     )
                 }
-            }
-
-
-
-            // Active Contacts Horizontal Row (from live Firestore)
-            val contactItems = liveContacts.map { c ->
-                ActiveContact(
-                    id = c.contactUserId,
-                    name = c.displayName,
-                    initials = c.initials,
-                    isOnline = true,
-                    hasStory = false,
-                    colorStart = c.avatarColorStart,
-                    colorEnd = c.avatarColorEnd
-                )
-            }
-
-            ActiveContactsRow(
-                contacts = contactItems,
-                onAddStatusClick = { showAddContactDialog = true },
-                onContactClick = { contact ->
-                    val threadId = chatRepository.generateThreadId(currentHandle, contact.id)
-                    val existing = liveThreads.firstOrNull { it.id == threadId }
-                    if (existing != null) {
-                        selectedThread = existing
-                    } else {
-                        selectedThread = ConversationThread(
-                            id = threadId,
-                            name = contact.name,
-                            lastMessage = "Encrypted session ready",
-                            avatarInitials = contact.initials,
-                            avatarColorStart = contact.colorStart,
-                            avatarColorEnd = contact.colorEnd,
-                            participantIds = listOf(currentHandle, contact.id).sorted()
-                        )
-                    }
-                }
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Filter Chips Row
-            FilterChipsRow(
-                selectedFilter = selectedFilter,
-                onFilterSelected = { selectedFilter = it }
-            )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // Conversation Threads List
-            if (liveThreads.isEmpty() && searchQuery.isBlank()) {
-                // Clean empty state card when new user account has zero chats
-                EmptyChatState(
-                    onAddContactClick = { showAddContactDialog = true }
-                )
-            } else if (filteredThreads.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(32.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "No results",
-                            tint = VhoqxethTextMuted,
-                            modifier = Modifier.size(48.dp)
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = "No conversations found",
-                            color = VhoqxethTextPrimary,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Try adjusting your search terms or filter category",
-                            color = VhoqxethTextMuted,
-                            fontSize = 13.sp,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .testTag("conversation_threads_list"),
-                    contentPadding = PaddingValues(bottom = 80.dp)
-                ) {
-                    items(
-                        items = filteredThreads,
-                        key = { it.id }
-                    ) { thread ->
-                        ChatItemRow(
-                            thread = thread,
-                            onClick = { selectedThread = thread }
-                        )
-                        HorizontalDivider(
-                            modifier = Modifier.padding(start = 84.dp, end = 16.dp),
-                            thickness = 0.5.dp,
-                            color = VhoqxethBorder.copy(alpha = 0.5f)
-                        )
-                    }
+                2 -> {
+                    SettingsTabContent(
+                        userProfile = currentUserState,
+                        databaseId = connectionManager.databaseId,
+                        authRepository = authRepository,
+                        onProfileUpdated = { updated ->
+                            currentUserState = updated
+                            sessionManager.saveSession(updated)
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar("Profile updated successfully")
+                            }
+                        },
+                        onSignOut = onSignOut,
+                        onShowAboutApp = { showAboutAppSheet = true },
+                        onShowPrivacyPolicy = { showPrivacyPolicySheet = true },
+                        onShowTerms = { showTermsSheet = true },
+                        onShowSnackbar = { msg ->
+                            coroutineScope.launch { snackbarHostState.showSnackbar(msg) }
+                        }
+                    )
                 }
             }
         }
@@ -773,14 +841,39 @@ fun ChatListScreen(
     }
 
     // Modal Dialog: Add Contact by User ID
-    if (showAddContactDialog && userProfile != null) {
+    if (showAddContactDialog && currentUserState != null) {
         AddContactDialog(
-            currentUser = userProfile,
+            currentUser = currentUserState!!,
             chatRepository = chatRepository,
             onDismiss = { showAddContactDialog = false },
             onContactAdded = { newThread ->
                 showAddContactDialog = false
                 selectedThread = newThread
+            }
+        )
+    }
+
+    // Modal Bottom Sheet: Optional Profile Setup (Prompted after registration/login)
+    if (showOptionalSetupModal && currentUserState != null) {
+        OptionalProfileSetupSheet(
+            currentUser = currentUserState!!,
+            authRepository = authRepository,
+            onSaved = { updatedProfile ->
+                currentUserState = updatedProfile
+                sessionManager.saveSession(updatedProfile)
+                showOptionalSetupModal = false
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar("Profile details saved successfully")
+                }
+            },
+            onSkipped = {
+                coroutineScope.launch {
+                    authRepository.skipOptionalProfileDetails(currentUserState!!.userId)
+                    val updated = currentUserState!!.copy(hasCompletedOptionalSetup = true)
+                    currentUserState = updated
+                    sessionManager.saveSession(updated)
+                }
+                showOptionalSetupModal = false
             }
         )
     }

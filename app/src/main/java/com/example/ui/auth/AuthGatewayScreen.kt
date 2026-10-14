@@ -65,6 +65,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -426,18 +427,22 @@ fun AuthGatewayScreen(
                             entry = currentStep.entry,
                             ip = currentStep.ip,
                             isLoading = isLoading,
-                            onContinue = {
+                            onUnlock = { password ->
                                 isLoading = true
+                                errorMessage = null
                                 coroutineScope.launch {
-                                    val profile = authRepository.getUserProfile(currentStep.entry.customUserId).getOrNull()
-                                        ?: UserProfile(
-                                            userId = currentStep.entry.customUserId,
-                                            displayName = currentStep.entry.displayName,
-                                            customUserId = currentStep.entry.customUserId,
-                                            currentIp = currentStep.ip
-                                        )
+                                    val authResult = authRepository.authenticateWithPassword(
+                                        customUserId = currentStep.entry.customUserId,
+                                        password = password,
+                                        currentIp = currentStep.ip
+                                    )
                                     isLoading = false
-                                    onAuthenticated(profile)
+                                    if (authResult.isSuccess) {
+                                        onAuthenticated(authResult.getOrNull()!!)
+                                    } else {
+                                        errorMessage = authResult.exceptionOrNull()?.localizedMessage
+                                            ?: "Incorrect password. Please verify your credentials."
+                                    }
                                 }
                             },
                             onSwitchAccount = {
@@ -463,13 +468,14 @@ fun AuthGatewayScreen(
                             onBack = {
                                 step = AuthScreenStep.Unrecognized(currentStep.ip)
                             },
-                            onSubmit = { name, customId ->
+                            onSubmit = { name, customId, password ->
                                 isLoading = true
                                 errorMessage = null
                                 coroutineScope.launch {
                                     val regResult = authRepository.registerUserProfile(
                                         displayName = name,
                                         customUserId = customId,
+                                        password = password,
                                         ip = currentStep.ip
                                     )
                                     isLoading = false
@@ -490,20 +496,21 @@ fun AuthGatewayScreen(
                             onBack = {
                                 step = AuthScreenStep.Unrecognized(currentStep.ip)
                             },
-                            onLink = { customId ->
+                            onLogin = { customId, password ->
                                 isLoading = true
                                 errorMessage = null
                                 coroutineScope.launch {
-                                    val linkResult = authRepository.linkIpToUserProfile(
+                                    val authResult = authRepository.authenticateWithPassword(
                                         customUserId = customId,
-                                        ip = currentStep.ip
+                                        password = password,
+                                        currentIp = currentStep.ip
                                     )
                                     isLoading = false
-                                    if (linkResult.isSuccess) {
-                                        onAuthenticated(linkResult.getOrNull()!!)
+                                    if (authResult.isSuccess) {
+                                        onAuthenticated(authResult.getOrNull()!!)
                                     } else {
-                                        errorMessage = linkResult.exceptionOrNull()?.localizedMessage
-                                            ?: "User not found or failed to link IP"
+                                        errorMessage = authResult.exceptionOrNull()?.localizedMessage
+                                            ?: "Account not found or password incorrect."
                                     }
                                 }
                             }
@@ -587,9 +594,14 @@ private fun RecognizedStepContent(
     entry: RegisteredIpEntry,
     ip: String,
     isLoading: Boolean,
-    onContinue: () -> Unit,
+    onUnlock: (password: String) -> Unit,
     onSwitchAccount: () -> Unit
 ) {
+    var password by remember { mutableStateOf("") }
+    var passwordVisible by remember { mutableStateOf(false) }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val isPasswordValid = password.length >= 4
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -685,12 +697,75 @@ private fun RecognizedStepContent(
             }
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-        // Main Login / Continue button
+        // Account Password input
+        Text(
+            text = "ENTER ACCOUNT PASSWORD",
+            color = VhoqxethTextSecondary,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it },
+            placeholder = { Text("Enter your account password", color = VhoqxethTextMuted, fontSize = 13.sp) },
+            singleLine = true,
+            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Default.Lock,
+                    contentDescription = "Password",
+                    tint = VhoqxethCyanAccent
+                )
+            },
+            trailingIcon = {
+                IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                    Icon(
+                        imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                        contentDescription = if (passwordVisible) "Hide password" else "Show password",
+                        tint = VhoqxethTextMuted
+                    )
+                }
+            },
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Password,
+                imeAction = ImeAction.Done
+            ),
+            keyboardActions = KeyboardActions(
+                onDone = {
+                    keyboardController?.hide()
+                    if (isPasswordValid && !isLoading) {
+                        onUnlock(password)
+                    }
+                }
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("recognized_password_input"),
+            shape = RoundedCornerShape(12.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = VhoqxethSurfaceElevated,
+                unfocusedContainerColor = VhoqxethSurfaceElevated,
+                focusedBorderColor = VhoqxethCyanAccent,
+                unfocusedBorderColor = VhoqxethBorder,
+                focusedTextColor = VhoqxethTextPrimary,
+                unfocusedTextColor = VhoqxethTextPrimary
+            )
+        )
+
+        Spacer(modifier = Modifier.height(18.dp))
+
+        // Main Login / Unlock button
         Button(
-            onClick = onContinue,
-            enabled = !isLoading,
+            onClick = {
+                keyboardController?.hide()
+                onUnlock(password)
+            },
+            enabled = isPasswordValid && !isLoading,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(48.dp)
@@ -710,7 +785,7 @@ private fun RecognizedStepContent(
             } else {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "Continue to Chats",
+                        text = "Unlock & Continue to Chats",
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -865,15 +940,21 @@ private fun RegisterFormContent(
     ip: String,
     isLoading: Boolean,
     onBack: () -> Unit,
-    onSubmit: (name: String, customUserId: String) -> Unit
+    onSubmit: (name: String, customUserId: String, password: String) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var customUserId by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
+    var passwordVisible by remember { mutableStateOf(false) }
+    var confirmPasswordVisible by remember { mutableStateOf(false) }
     val keyboardController = LocalSoftwareKeyboardController.current
 
     val isNameValid = name.trim().length >= 2
     val isCustomIdValid = customUserId.trim().matches(Regex("^[a-zA-Z0-9_]{3,20}$"))
-    val isFormValid = isNameValid && isCustomIdValid
+    val isPasswordValid = password.length >= 4
+    val doPasswordsMatch = password.isNotEmpty() && password == confirmPassword
+    val isFormValid = isNameValid && isCustomIdValid && isPasswordValid && doPasswordsMatch
 
     Column(
         modifier = Modifier
@@ -911,7 +992,7 @@ private fun RegisterFormContent(
         Spacer(modifier = Modifier.height(14.dp))
 
         Text(
-            text = "Enter your profile details. Your device IP ($ip) will be registered to this identity in the database:",
+            text = "Create your decentralized identity with password protection. Other personal profile details are optional and can be filled after login:",
             color = VhoqxethTextMuted,
             fontSize = 12.sp,
             lineHeight = 17.sp
@@ -921,7 +1002,7 @@ private fun RegisterFormContent(
 
         // Display Name Field
         Text(
-            text = "NAME",
+            text = "VISIBLE NAME",
             color = VhoqxethTextSecondary,
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
@@ -931,7 +1012,7 @@ private fun RegisterFormContent(
         OutlinedTextField(
             value = name,
             onValueChange = { name = it },
-            placeholder = { Text("e.g. Alex Hunter", color = VhoqxethTextMuted) },
+            placeholder = { Text("e.g. Alex Hunter", color = VhoqxethTextMuted, fontSize = 13.sp) },
             singleLine = true,
             leadingIcon = {
                 Icon(
@@ -962,7 +1043,7 @@ private fun RegisterFormContent(
 
         // Custom User ID Field
         Text(
-            text = "CUSTOM USER ID",
+            text = "CUSTOM USER ID / HANDLE",
             color = VhoqxethTextSecondary,
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
@@ -974,7 +1055,7 @@ private fun RegisterFormContent(
             onValueChange = { input ->
                 customUserId = input.filter { it.isLetterOrDigit() || it == '_' }
             },
-            placeholder = { Text("e.g. cypher_fox", color = VhoqxethTextMuted) },
+            placeholder = { Text("e.g. cypher_fox", color = VhoqxethTextMuted, fontSize = 13.sp) },
             singleLine = true,
             leadingIcon = {
                 Icon(
@@ -984,22 +1065,14 @@ private fun RegisterFormContent(
                 )
             },
             keyboardOptions = KeyboardOptions(
-                imeAction = ImeAction.Done
-            ),
-            keyboardActions = KeyboardActions(
-                onDone = {
-                    keyboardController?.hide()
-                    if (isFormValid && !isLoading) {
-                        onSubmit(name, customUserId)
-                    }
-                }
+                imeAction = ImeAction.Next
             ),
             supportingText = {
                 Text(
                     text = if (customUserId.isNotEmpty() && !isCustomIdValid) {
                         "3–20 characters, letters, numbers, or underscores"
                     } else {
-                        "Your custom handle on the network"
+                        "Your immutable peer address on the network"
                     },
                     color = if (customUserId.isNotEmpty() && !isCustomIdValid) Color(0xFFFF8A80) else VhoqxethTextMuted,
                     fontSize = 11.sp
@@ -1019,12 +1092,142 @@ private fun RegisterFormContent(
             )
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // Create Password Field
+        Text(
+            text = "CREATE PASSWORD",
+            color = VhoqxethTextSecondary,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it },
+            placeholder = { Text("At least 4 characters", color = VhoqxethTextMuted, fontSize = 13.sp) },
+            singleLine = true,
+            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Default.Lock,
+                    contentDescription = "Password",
+                    tint = VhoqxethCyanAccent
+                )
+            },
+            trailingIcon = {
+                IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                    Icon(
+                        imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                        contentDescription = if (passwordVisible) "Hide password" else "Show password",
+                        tint = VhoqxethTextMuted
+                    )
+                }
+            },
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Password,
+                imeAction = ImeAction.Next
+            ),
+            supportingText = {
+                Text(
+                    text = if (password.isNotEmpty() && !isPasswordValid) {
+                        "Password must be at least 4 characters"
+                    } else {
+                        "Secured with unique cryptographic salt & SHA-256"
+                    },
+                    color = if (password.isNotEmpty() && !isPasswordValid) Color(0xFFFF8A80) else VhoqxethTextMuted,
+                    fontSize = 11.sp
+                )
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("password_input_field"),
+            shape = RoundedCornerShape(12.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = VhoqxethSurfaceElevated,
+                unfocusedContainerColor = VhoqxethSurfaceElevated,
+                focusedBorderColor = VhoqxethCyanAccent,
+                unfocusedBorderColor = VhoqxethBorder,
+                focusedTextColor = VhoqxethTextPrimary,
+                unfocusedTextColor = VhoqxethTextPrimary
+            )
+        )
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // Confirm Password Field
+        Text(
+            text = "CONFIRM PASSWORD",
+            color = VhoqxethTextSecondary,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        OutlinedTextField(
+            value = confirmPassword,
+            onValueChange = { confirmPassword = it },
+            placeholder = { Text("Re-enter password", color = VhoqxethTextMuted, fontSize = 13.sp) },
+            singleLine = true,
+            visualTransformation = if (confirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Default.Lock,
+                    contentDescription = "Confirm Password",
+                    tint = if (doPasswordsMatch) VhoqxethOnlineGreen else VhoqxethCyanAccent
+                )
+            },
+            trailingIcon = {
+                IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }) {
+                    Icon(
+                        imageVector = if (confirmPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                        contentDescription = if (confirmPasswordVisible) "Hide password" else "Show password",
+                        tint = VhoqxethTextMuted
+                    )
+                }
+            },
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Password,
+                imeAction = ImeAction.Done
+            ),
+            keyboardActions = KeyboardActions(
+                onDone = {
+                    keyboardController?.hide()
+                    if (isFormValid && !isLoading) {
+                        onSubmit(name, customUserId, password)
+                    }
+                }
+            ),
+            supportingText = {
+                if (confirmPassword.isNotEmpty() && !doPasswordsMatch) {
+                    Text(
+                        text = "Passwords do not match",
+                        color = Color(0xFFFF8A80),
+                        fontSize = 11.sp
+                    )
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("confirm_password_input_field"),
+            shape = RoundedCornerShape(12.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = VhoqxethSurfaceElevated,
+                unfocusedContainerColor = VhoqxethSurfaceElevated,
+                focusedBorderColor = if (doPasswordsMatch) VhoqxethOnlineGreen else VhoqxethCyanAccent,
+                unfocusedBorderColor = VhoqxethBorder,
+                focusedTextColor = VhoqxethTextPrimary,
+                unfocusedTextColor = VhoqxethTextPrimary
+            )
+        )
+
+        Spacer(modifier = Modifier.height(20.dp))
 
         Button(
             onClick = {
                 keyboardController?.hide()
-                onSubmit(name, customUserId)
+                onSubmit(name, customUserId, password)
             },
             enabled = isFormValid && !isLoading,
             modifier = Modifier
@@ -1045,7 +1248,7 @@ private fun RegisterFormContent(
                 )
             } else {
                 Text(
-                    text = "Register Account on IP",
+                    text = "Create Account with Password",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -1059,11 +1262,13 @@ private fun LinkExistingContent(
     ip: String,
     isLoading: Boolean,
     onBack: () -> Unit,
-    onLink: (customUserId: String) -> Unit
+    onLogin: (customUserId: String, password: String) -> Unit
 ) {
     var customUserId by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var passwordVisible by remember { mutableStateOf(false) }
     val keyboardController = LocalSoftwareKeyboardController.current
-    val isValid = customUserId.trim().isNotEmpty()
+    val isValid = customUserId.trim().isNotEmpty() && password.length >= 4
 
     Column(
         modifier = Modifier
@@ -1102,7 +1307,7 @@ private fun LinkExistingContent(
         Spacer(modifier = Modifier.height(14.dp))
 
         Text(
-            text = "Enter your existing Custom User ID to link this device IP ($ip) to your profile and log in:",
+            text = "Enter your Custom User ID and account password to securely authenticate and access your messages:",
             color = VhoqxethTextMuted,
             fontSize = 12.sp,
             lineHeight = 17.sp
@@ -1110,10 +1315,20 @@ private fun LinkExistingContent(
 
         Spacer(modifier = Modifier.height(18.dp))
 
+        // Custom User ID Field
+        Text(
+            text = "CUSTOM USER ID",
+            color = VhoqxethTextSecondary,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(6.dp))
         OutlinedTextField(
             value = customUserId,
             onValueChange = { customUserId = it.trim() },
-            placeholder = { Text("e.g. cypher_fox", color = VhoqxethTextMuted) },
+            placeholder = { Text("e.g. cypher_fox", color = VhoqxethTextMuted, fontSize = 13.sp) },
             singleLine = true,
             leadingIcon = {
                 Icon(
@@ -1122,16 +1337,68 @@ private fun LinkExistingContent(
                     tint = VhoqxethCyanAccent
                 )
             },
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("existing_custom_id_input"),
+            shape = RoundedCornerShape(12.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = VhoqxethSurfaceElevated,
+                unfocusedContainerColor = VhoqxethSurfaceElevated,
+                focusedBorderColor = VhoqxethCyanAccent,
+                unfocusedBorderColor = VhoqxethBorder,
+                focusedTextColor = VhoqxethTextPrimary,
+                unfocusedTextColor = VhoqxethTextPrimary
+            )
+        )
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // Password Field
+        Text(
+            text = "ACCOUNT PASSWORD",
+            color = VhoqxethTextSecondary,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it },
+            placeholder = { Text("Enter your account password", color = VhoqxethTextMuted, fontSize = 13.sp) },
+            singleLine = true,
+            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Default.Lock,
+                    contentDescription = "Password",
+                    tint = VhoqxethCyanAccent
+                )
+            },
+            trailingIcon = {
+                IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                    Icon(
+                        imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                        contentDescription = if (passwordVisible) "Hide password" else "Show password",
+                        tint = VhoqxethTextMuted
+                    )
+                }
+            },
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Password,
+                imeAction = ImeAction.Done
+            ),
             keyboardActions = KeyboardActions(
                 onDone = {
                     keyboardController?.hide()
-                    if (isValid && !isLoading) onLink(customUserId)
+                    if (isValid && !isLoading) onLogin(customUserId, password)
                 }
             ),
             modifier = Modifier
                 .fillMaxWidth()
-                .testTag("existing_custom_id_input"),
+                .testTag("existing_password_input"),
             shape = RoundedCornerShape(12.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedContainerColor = VhoqxethSurfaceElevated,
@@ -1148,7 +1415,7 @@ private fun LinkExistingContent(
         Button(
             onClick = {
                 keyboardController?.hide()
-                onLink(customUserId)
+                onLogin(customUserId, password)
             },
             enabled = isValid && !isLoading,
             modifier = Modifier
@@ -1170,13 +1437,13 @@ private fun LinkExistingContent(
             } else {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVector = Icons.Default.Link,
-                        contentDescription = "Link",
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = "Log In",
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Link Device IP & Log In",
+                        text = "Log In with Password",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold
                     )

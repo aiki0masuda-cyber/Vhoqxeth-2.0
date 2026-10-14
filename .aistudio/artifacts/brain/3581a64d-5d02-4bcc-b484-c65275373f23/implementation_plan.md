@@ -1,23 +1,35 @@
-# Sync Real Chats & Contacts with User ID Discovery
+# Password Protection, Profile Customization & Functional Settings Panel
 
-Transform Vhoqxeth from static sample mock data into a live, real-time Firestore-synchronized messaging network. New accounts start with a pristine clean state (zero placeholder contacts or threads), provide a peer discovery modal to add contacts by User ID, and synchronize two-way end-to-end conversation threads directly via Firestore snapshot listeners.
+Secure Vhoqxeth accounts with salted SHA-256 password protection at registration and login, present a non-blocking post-login optional profile completion modal sheet, replace cluttered bottom navigation tabs with a clean 3-tab structure (**Chats**, **Contacts**, **Settings**), and deliver a functional Settings panel with Profile Management.
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
 > The following product decisions were confirmed during interactive consultation:
-> - **Peer Addition**: Modal dialog with real-time `@customUserId` search, instant verification badge, and one-tap "Add Contact".
-> - **First-Launch Zero State**: Clean empty state card featuring an inviting mesh communication graphic and an "Add Contact" call-to-action button.
-> - **Database Structure**: Real-time two-way shared threads under `/threads/{threadId}` with deterministic participant pairing (`thread_${min(u1,u2)}_${max(u1,u2)}`) and subcollection `/messages`, accompanied by personal contact rosters under `/users/{userId}/contacts`.
-> - **Sample Data Elimination**: Complete removal of `DummyData.placeholderThreads` and `DummyData.activeContacts` from user account views.
+> - **Bottom Navigation Structure**: Simplified to 3 core tabs: **Chats**, **Contacts**, and **Settings** (permanently removing *Calls*, *Channels*, and *Vault*).
+> - **Profile Settings & Editability**: Inside Settings, the **Profile Settings** screen allows viewing and editing Visible Name, First Name, Last Name, Date of Birth, Description/Bio, and Password. The **Handle / User ID** is immutable and securely locked.
+> - **Settings Categories**:
+>   1. **Profile Settings**: Personal identity customization and password change with current password validation.
+>   2. **Network IP & Connection Status**: Live device IP, roaming network recognition, and Firestore heartbeat.
+>   3. **Notifications & Privacy**: Encryption toggles, alert tones, and read receipt preferences.
+>   4. **Local Cache & Diagnostics**: Cache cleanup tool and diagnostic latency monitor.
+>   5. **Protocol Charter**: Direct access to Privacy Policy, Terms & Conditions, and App Info.
+>   6. **Sign Out**: Clean enclave logout returning to the auth gateway.
+> - **Registration & Login**: Visible Name, Handle, and Password are required. First Name, Last Name, DOB, and Bio are optional and can be filled or skipped post-login.
 
 ---
 
 ## 1. Overview & Core Concept
 
-- **What It Does**: Replaces static, hardcoded sample chats and contacts with dynamic, cloud-backed records. When an account is registered or logged in, their contacts and conversation history are pulled directly from Firestore in real time. Users can discover and add other registered users using their unique User ID (`customUserId`), immediately creating an active two-way thread.
-- **Target Audience / Persona**: Users communicating over the encrypted mesh who expect their personal address book and conversations to persist, sync across devices, and contain exclusively authentic user interactions.
-- **Key Value**: Delivers complete data authenticity, eliminates deceptive sample data, and provides an effortless peer addition experience with instant two-way sync.
+- **What It Does**:
+  1. **Password-Gated Authentication**: Enforces passwords during account creation and login, preventing unauthorized actors on the same local network or IP from accessing personal conversations.
+  2. **Post-Authentication Profile Setup**: Displays a clean modal sheet after registration or initial login for optional details (First Name, Last Name, DOB, Bio) with **Save & Continue** and **Skip for Now** actions.
+  3. **Streamlined Navigation (3 Tabs)**:
+     - **Chats**: Active conversations and real-time messaging.
+     - **Contacts**: Roster of added peers with real-time "Add Contact by User ID" discovery.
+     - **Settings**: Functional command center for profile management, network telemetry, and app preferences.
+  4. **Settings & Profile Customizer**: Central hub where users can update visible name, personal bio, full name, birthday, and account password whenever desired, with handle immutability preserved.
+- **Target Audience / Persona**: Security-conscious mesh chat users who desire a minimalist, intuitive chat app without bloatware navigation tabs.
 
 ---
 
@@ -25,131 +37,122 @@ Transform Vhoqxeth from static sample mock data into a live, real-time Firestore
 
 ### Key User Flows
 
-1. **New User Account / Clean Zero State**:
-   - On initial login, the user sees an empty conversation dashboard with zero sample chats.
-   - An elegant centered card features an indigo connection glyph, headline *"No mesh conversations yet"*, descriptive guidance *"Search for registered peers by their User ID to begin exchanging encrypted messages"*, and an **Add Contact** primary button.
-2. **Add Contact via User ID Modal**:
-   - Tapping the FAB or the empty state button opens the **Add Contact Dialog** (`add_contact_dialog`).
-   - The user enters a handle (e.g. `alice` or `@alice`).
-   - The system performs a debounced Firestore lookup against `/users` collection:
-     - **Found**: Displays a contact preview card with avatar initials, display name, verified `@customUserId`, and an **Add to Contacts** button.
-     - **Not Found**: Displays an informative *"No registered user found with ID @handle"* status.
-     - **Self-addition**: Prevents adding own User ID with friendly feedback.
-3. **Active Contact & Conversation Row**:
-   - Adding a contact stores it in `/users/{currentUserId}/contacts` and automatically starts or opens the deterministic two-way thread.
-   - Contacts appear in the top horizontal roster with their authentic display names and status indicators.
-   - Chats appear in the thread list sorted by `updatedAt` with live last-message snippets and unread counters.
-4. **Interactive Message Exchange**:
-   - Tapping any conversation thread opens the live message viewer with real-time Firestore message streams.
-   - Sending a message writes to `/threads/{threadId}/messages` and updates `/threads/{threadId}` metadata, instantly updating both participants' devices.
+1. **Account Registration**:
+   - Fields: Visible Display Name, Handle/User ID (`@username`), Password, and Confirm Password with visibility toggles.
+   - Validates password strength (minimum length) and handle availability.
+   - On completion, logs in and presents the optional details onboarding modal sheet.
 
-### Visual Identity & Theme Alignment
-- **Empty State Card**: Crisp white surface (`#FFFFFF`) with soft warm border (`#E2E8F0`), deep indigo icon badge, and slate typography.
-- **Add Contact Dialog**: Clean white container (`#FFFFFF`), rounded corners (16.dp), clear search text field with slate container (`#F8FAFC`), and vibrant deep indigo action buttons.
-- **Contact Chips**: Minimalist circle avatar with indigo-to-cobalt gradient and bold initials.
+2. **Account Login**:
+   - Fields: Handle/User ID and Password.
+   - Verifies against salted SHA-256 hash in Firestore.
+   - Prevents unauthenticated bypass on recognized IPs.
+
+3. **Optional Profile Setup Modal (`OptionalProfileSetupSheet`)**:
+   - Modal bottom sheet displayed upon registration or first login if optional attributes are empty.
+   - Fields: First Name (optional), Last Name (optional), Date of Birth (optional), Description (optional).
+   - Buttons: **Save & Continue** (primary) and **Skip for Now** (outlined).
+
+4. **3-Tab Bottom Navigation**:
+   - **Tab 1: Chats**: Conversation list, unread filter chips, empty state card, and direct messaging sheet.
+   - **Tab 2: Contacts**: Searchable contact roster, "+ Add Peer" action button, peer status badges, and one-tap thread launching.
+   - **Tab 3: Settings**: Comprehensive settings list with clean categorized card groups.
+
+5. **Settings Panel & Profile Settings Screen**:
+   - **Profile Settings Item**: Tapping opens the Profile Editor with avatar preview, locked handle (`@handle` with lock icon), editable Visible Name, First Name, Last Name, DOB, Description, and **"Update Password"** dialog.
+   - **Network & Enclave Status**: Live IP address, Firestore cluster status, and cryptographic enclave indicator.
+   - **Privacy & Notifications**: Toggles for notification alerts and message encryption headers.
+   - **Local Storage & Cache**: Displays cached session size with a "Clear Cache" button.
+   - **Protocol Charter**: Privacy Policy and Terms & Conditions modal viewers.
+   - **Sign Out Button**: Safe session clearance with confirmation prompt.
 
 ---
 
 ## 3. Key Product Decisions & Trade-Offs
 
-- **Decision 1: Deterministic Thread IDs for Two-Way Messaging**:
-  - *Chosen Approach*: `threadId = "thread_" + listOf(userId1, userId2).sorted().joinToString("_")`.
-  - *Why*: Guarantees that whether User A messages User B or User B messages User A, both participants read and write to the exact same Firestore thread without race conditions or duplicate thread documents.
-  - *Alternatives Considered*: Independent copies per user (causes desynchronization and double-writes).
-
-- **Decision 2: Subcollection Messages with Root Threads**:
-  - *Chosen Approach*: `/threads/{threadId}` holds participants and snippet preview; `/threads/{threadId}/messages/{messageId}` holds individual encrypted messages.
-  - *Why*: Allows listening to lightweight thread metadata in the main list without loading thousands of historical message payloads into memory.
-
-- **Decision 3: Complete Removal of Sample Mock Data**:
-  - *Chosen Approach*: Clean deprecation of `DummyData.placeholderThreads` and `DummyData.activeContacts` from the UI.
-  - *Why*: Directly satisfies the user's explicit requirement: "Clear all chat and contacts on new user account and sync chats and contacts on database and remove the semple contacts".
+- **Decision 1: Three Dedicated Tabs (Chats, Contacts, Settings)**:
+  - *Chosen Approach*: Replace the previous 5 tabs (*Chats, Calls, Channels, Vault, Settings*) with a focused 3-tab layout.
+  - *Why*: Eliminates non-functional dead ends (*Calls, Vault, Channels*) and elevates Contacts into a dedicated second tab for fast peer navigation.
+- **Decision 2: Immutable Handle in Profile Settings**:
+  - *Chosen Approach*: Allow editing Visible Name, First Name, Last Name, DOB, and Bio, but lock the Handle (`customUserId`).
+  - *Why*: The handle is the primary key in Firestore (`/users/{userId}` and reciprocal contacts `/users/{peer}/contacts/{userId}`). Changing the handle would break reciprocal contacts and deterministic thread IDs (`thread_userA_userB`).
+- **Decision 3: Password Update Security Guard**:
+  - *Chosen Approach*: Updating the password requires entering the current password first.
+  - *Why*: Ensures that even if an unlocked device is temporarily in another person's hands, they cannot lock out the true owner by silently changing the password.
 
 ---
 
 ## 4. Technical Architecture & Data Strategy
 
-### System Diagram
+### System Layout
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                       ChatListScreen                        │
-│  ┌───────────────────────┐       ┌───────────────────────┐  │
-│  │   ActiveContactsRow   │       │   FilteredThreadList  │  │
-│  │ (Live from Firestore) │       │ (Live from Firestore) │  │
-│  └───────────┬───────────┘       └───────────┬───────────┘  │
-│              │                               │              │
-│              └───────────────┬───────────────┘              │
-│                              ▼                              │
-│              ┌───────────────────────────────┐              │
-│              │     AddContactDialog (Modal)  │              │
-│              │   - Search by customUserId    │              │
-│              │   - Verify in /users          │              │
-│              └───────────────┬───────────────┘              │
-└──────────────────────────────┼──────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    MeshChatRepository                       │
-│  ├─ observeContacts(userId): Flow<List<UserContact>>        │
-│  ├─ observeThreads(userId): Flow<List<ChatThread>>          │
-│  ├─ searchUserByHandle(handle): Result<UserProfile?>        │
-│  ├─ addContact(userId, targetProfile): Result<Unit>         │
-│  └─ sendMessage(threadId, sender, content): Result<Unit>    │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      Firestore Backend                      │
-│  ├─ /users/{userId}/contacts/{contactId}                    │
-│  ├─ /threads/{threadId} (participants: [u1, u2])            │
-│  └─ /threads/{threadId}/messages/{messageId}                │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                      MainActivity / Scaffold                    │
+│                                                                 │
+│  ┌─────────────────┐   ┌───────────────────┐   ┌─────────────┐  │
+│  │   Chats Tab     │   │   Contacts Tab    │   │ Settings Tab│  │
+│  │   - Threads     │   │   - Active Roster │   │ - Profile   │  │
+│  │   - Direct Chat │   │   - Add Peer Modal│   │ - Network IP│  │
+│  │   - Empty State │   │   - Peer Actions  │   │ - Privacy   │  │
+│  └─────────────────┘   └───────────────────┘   │ - Cache     │  │
+│                                                │ - Charter   │  │
+│                                                └─────────────┘  │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │      Simplified NavigationBar (Chats | Contacts | Settings)│ │
+│  └───────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### Data Schema Updates (`firebase-blueprint.json` & `firestore.rules`)
+### Data Schema Updates (`UserProfile.kt` & `firebase-blueprint.json`)
 
-1. **`UserContact` Entity**:
-   - `contactUserId`: String
-   - `displayName`: String
-   - `currentIp`: String
-   - `addedAt`: String
-2. **`ChatThread` Entity**:
-   - `threadId`: String
-   - `participantIds`: Array of String
-   - `participantNames`: Map of String -> String
-   - `lastMessage`: String
-   - `lastSenderId`: String
-   - `updatedAt`: String
-3. **`ChatMessage` Entity**:
-   - `messageId`: String
-   - `threadId`: String
-   - `senderId`: String
-   - `senderName`: String
-   - `content`: String
-   - `timestamp`: String
+```kotlin
+data class UserProfile(
+    val userId: String = "",
+    val displayName: String = "",
+    val customUserId: String = "",
+    val passwordHash: String = "",
+    val passwordSalt: String = "",
+    val firstName: String = "",
+    val lastName: String = "",
+    val dateOfBirth: String = "",
+    val description: String = "",
+    val hasCompletedOptionalSetup: Boolean = false,
+    val associatedIps: List<String> = emptyList(),
+    val currentIp: String = "",
+    val createdAt: String = ""
+)
+```
 
 ### Security Rules (`firestore.rules`)
-- `/users/{userId}/contacts/{contactId}`: Allow read/write for contact entries.
-- `/threads/{threadId}`: Allow read/write for thread participants.
-- `/threads/{threadId}/messages/{messageId}`: Allow read/write for thread participants.
+Ensure `isValidUser` validates the updated profile payload and permits updates from verified sessions.
 
 ---
 
 ## 5. Implementation Phases
 
-1. **Phase 1: Database Blueprint & Rules**:
-   - Add `UserContact`, `ChatThread`, and `ChatMessage` to `firebase-blueprint.json`.
-   - Update `firestore.rules` and test against local emulator.
-2. **Phase 2: Repository & Data Models**:
-   - Create `UserContact.kt` and `ChatMessage.kt`.
-   - Create `MeshChatRepository.kt` with coroutine Flow snapshot listeners for contacts, threads, and peer search.
-3. **Phase 3: Add Contact Modal Dialog**:
-   - Create `AddContactDialog.kt` supporting debounce handle query, user profile preview, and instant add.
-4. **Phase 4: ChatListScreen & Clean Empty State Integration**:
-   - Replace `DummyData` with real-time `MeshChatRepository` flows.
-   - Build `EmptyChatState` card with "Add Contact" trigger.
-   - Wire live threads into conversation viewer with real message sending.
-5. **Phase 5: Verification & Testing**:
-   - Run unit and Robolectric tests (`gradle :app:testDebugUnitTest`).
-   - Validate full application build (`compile_applet`).
+1. **Phase 1: Cryptographic Password & Data Schema Layer**:
+   - Update `UserProfile.kt` and `firebase-blueprint.json` with password hash, salt, and optional identity fields.
+   - Implement `PasswordSecurityUtil.kt` (SHA-256 salted hashing and verification).
+   - Update `AuthRepository.kt` with password registration, authentication, profile updates, and password change methods.
+   - Update `firestore.rules` and verify with JavaScript rules unit tests.
+2. **Phase 2: AuthGatewayScreen Password Registration & Login**:
+   - Add Password and Confirm Password inputs with visibility toggles to `RegisterForm`.
+   - Update `LinkExisting` and `Recognized` forms to mandate password entry.
+3. **Phase 3: Post-Login Optional Profile Setup Modal**:
+   - Create `OptionalProfileSetupSheet.kt` with First Name, Last Name, DOB, Description, **Save Details**, and **Skip for Now** actions.
+   - Wire trigger in `ChatListScreen` / `MainActivity` upon login/registration when `!hasCompletedOptionalSetup`.
+4. **Phase 4: Simplified 3-Tab Navigation & Contacts Screen**:
+   - Update bottom navigation in `ChatListScreen` to have exactly 3 tabs: **Chats**, **Contacts**, and **Settings**.
+   - Create `ContactsTabContent.kt` displaying the full user contact roster with search and "+ Add Peer by User ID" CTA.
+5. **Phase 5: Full Settings Panel & Profile Editor**:
+   - Create `SettingsScreenContent.kt` featuring:
+     - Profile Settings (view/edit visible name, full name, DOB, bio; change password; locked handle).
+     - Network IP & Status card.
+     - Notifications & Privacy toggles card.
+     - Local Cache & Diagnostics card with cache clear button.
+     - Legal & Protocol Charter card.
+     - Sign Out button.
+   - Create `ProfileEditorDialog.kt` and `ChangePasswordDialog.kt`.
+6. **Phase 6: Testing & Verification**:
+   - Run compilation check (`compile_applet`).
+   - Run unit & Robolectric tests (`gradle :app:testDebugUnitTest`).

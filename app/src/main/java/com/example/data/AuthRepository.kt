@@ -70,12 +70,13 @@ class AuthRepository(
     }
 
     /**
-     * Registers a new user profile using only their chosen display name, custom user ID handle,
-     * and detected IP address, writing directly to Firestore without third-party auth gates.
+     * Registers a new user profile with required Visible Name, Handle/User ID,
+     * and a salted SHA-256 password hash.
      */
     suspend fun registerUserProfile(
         displayName: String,
         customUserId: String,
+        password: String,
         ip: String
     ): Result<UserProfile> = withContext(Dispatchers.IO) {
         try {
@@ -83,7 +84,11 @@ class AuthRepository(
             val sanitizedHandle = customUserId.trim().removePrefix("@")
 
             if (sanitizedHandle.isBlank()) {
-                return@withContext Result.failure(IllegalArgumentException("Custom User ID cannot be empty."))
+                return@withContext Result.failure(IllegalArgumentException("User ID / Handle cannot be empty."))
+            }
+
+            if (password.length < 4) {
+                return@withContext Result.failure(IllegalArgumentException("Password must be at least 4 characters."))
             }
 
             // Check if handle already exists
@@ -94,11 +99,21 @@ class AuthRepository(
                 )
             }
 
+            val salt = PasswordSecurityUtil.generateSalt()
+            val hash = PasswordSecurityUtil.hashPassword(password, salt)
+
             val newProfile = UserProfile(
                 userId = sanitizedHandle,
                 displayName = displayName.trim().ifBlank { sanitizedHandle },
                 customUserId = sanitizedHandle,
-                associatedIps = listOf(ip),
+                passwordHash = hash,
+                passwordSalt = salt,
+                firstName = "",
+                lastName = "",
+                dateOfBirth = "",
+                description = "",
+                hasCompletedOptionalSetup = false,
+                associatedIps = if (ip.isNotBlank()) listOf(ip) else emptyList(),
                 currentIp = ip,
                 createdAt = now
             )
@@ -108,27 +123,219 @@ class AuthRepository(
                 "userId" to sanitizedHandle,
                 "displayName" to newProfile.displayName,
                 "customUserId" to sanitizedHandle,
-                "associatedIps" to listOf(ip),
+                "passwordHash" to hash,
+                "passwordSalt" to salt,
+                "firstName" to "",
+                "lastName" to "",
+                "dateOfBirth" to "",
+                "description" to "",
+                "hasCompletedOptionalSetup" to false,
+                "associatedIps" to newProfile.associatedIps,
                 "currentIp" to ip,
                 "createdAt" to now
             )
             db.collection("users").document(sanitizedHandle).set(userPayload).await()
 
-            // 2. Write IP index entry
-            val ipKey = DeviceIpManager.sanitizeIpKey(ip)
-            val ipPayload = mapOf(
-                "ip" to ip,
-                "userId" to sanitizedHandle,
-                "customUserId" to sanitizedHandle,
-                "displayName" to newProfile.displayName,
-                "registeredAt" to now
-            )
-            db.collection("registered_ips").document(ipKey).set(ipPayload).await()
+            // 2. Write IP index entry if IP is valid
+            if (ip.isNotBlank()) {
+                val ipKey = DeviceIpManager.sanitizeIpKey(ip)
+                val ipPayload = mapOf(
+                    "ip" to ip,
+                    "userId" to sanitizedHandle,
+                    "customUserId" to sanitizedHandle,
+                    "displayName" to newProfile.displayName,
+                    "registeredAt" to now
+                )
+                db.collection("registered_ips").document(ipKey).set(ipPayload).await()
+            }
 
-            Log.i(tag, "Successfully registered user @$sanitizedHandle on IP $ip")
+            Log.i(tag, "Successfully registered user @$sanitizedHandle with salted password on IP $ip")
             Result.success(newProfile)
         } catch (e: Exception) {
             Log.e(tag, "Failed to register user profile: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Authenticates a user by validating their handle and password against the stored salted hash.
+     */
+    suspend fun authenticateWithPassword(
+        customUserId: String,
+        password: String,
+        currentIp: String = ""
+    ): Result<UserProfile> = withContext(Dispatchers.IO) {
+        try {
+            val sanitizedHandle = customUserId.trim().removePrefix("@")
+            if (sanitizedHandle.isBlank()) {
+                return@withContext Result.failure(IllegalArgumentException("Please enter your User ID."))
+            }
+
+            val userDoc = db.collection("users").document(sanitizedHandle).get().await()
+            if (!userDoc.exists()) {
+                return@withContext Result.failure(
+                    IllegalArgumentException("User account '@$sanitizedHandle' was not found.")
+                )
+            }
+
+            val existingProfile = userDoc.toObject(UserProfile::class.java)
+                ?: return@withContext Result.failure(IllegalArgumentException("Failed to read user account profile."))
+
+            // Validate password if user has password set
+            if (existingProfile.passwordHash.isNotBlank()) {
+                val isValid = PasswordSecurityUtil.verifyPassword(
+                    password = password,
+                    salt = existingProfile.passwordSalt,
+                    storedHash = existingProfile.passwordHash
+                )
+                if (!isValid) {
+                    return@withContext Result.failure(
+                        IllegalArgumentException("Incorrect password. Please verify your credentials.")
+                    )
+                }
+            }
+
+            // Sync current IP if changed
+            if (currentIp.isNotBlank() && currentIp != existingProfile.currentIp) {
+                linkIpToUserProfile(sanitizedHandle, currentIp)
+            }
+
+            Log.i(tag, "User @$sanitizedHandle authenticated successfully")
+            Result.success(existingProfile)
+        } catch (e: Exception) {
+            Log.e(tag, "Authentication failed: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Updates optional profile details (first name, last name, DOB, description).
+     */
+    suspend fun updateOptionalProfileDetails(
+        userId: String,
+        firstName: String,
+        lastName: String,
+        dateOfBirth: String,
+        description: String
+    ): Result<UserProfile> = withContext(Dispatchers.IO) {
+        try {
+            val key = userId.trim().removePrefix("@")
+            val userDoc = db.collection("users").document(key).get().await()
+            val existing = userDoc.toObject(UserProfile::class.java)
+                ?: return@withContext Result.failure(IllegalArgumentException("User profile not found."))
+
+            val updated = existing.copy(
+                firstName = firstName.trim(),
+                lastName = lastName.trim(),
+                dateOfBirth = dateOfBirth.trim(),
+                description = description.trim(),
+                hasCompletedOptionalSetup = true
+            )
+
+            val updatePayload = mapOf<String, Any>(
+                "firstName" to updated.firstName,
+                "lastName" to updated.lastName,
+                "dateOfBirth" to updated.dateOfBirth,
+                "description" to updated.description,
+                "hasCompletedOptionalSetup" to true
+            )
+            db.collection("users").document(key).update(updatePayload).await()
+
+            Log.i(tag, "Updated optional profile details for @$key")
+            Result.success(updated)
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to update profile details: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Marks optional setup as completed/skipped so modal does not re-appear on subsequent boots.
+     */
+    suspend fun skipOptionalProfileDetails(userId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val key = userId.trim().removePrefix("@")
+            db.collection("users").document(key).update("hasCompletedOptionalSetup", true).await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to mark optional details as skipped: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Updates the user's visible display name across their profile and IP mapping.
+     */
+    suspend fun updateVisibleName(userId: String, newDisplayName: String): Result<UserProfile> = withContext(Dispatchers.IO) {
+        try {
+            val key = userId.trim().removePrefix("@")
+            val trimmedName = newDisplayName.trim()
+            if (trimmedName.isBlank()) {
+                return@withContext Result.failure(IllegalArgumentException("Visible name cannot be blank."))
+            }
+
+            val userDoc = db.collection("users").document(key).get().await()
+            val existing = userDoc.toObject(UserProfile::class.java)
+                ?: return@withContext Result.failure(IllegalArgumentException("User profile not found."))
+
+            val updated = existing.copy(displayName = trimmedName)
+            db.collection("users").document(key).update("displayName", trimmedName).await()
+
+            if (existing.currentIp.isNotBlank()) {
+                val ipKey = DeviceIpManager.sanitizeIpKey(existing.currentIp)
+                db.collection("registered_ips").document(ipKey).update("displayName", trimmedName).await()
+            }
+
+            Log.i(tag, "Updated visible name for @$key to '$trimmedName'")
+            Result.success(updated)
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to update visible name: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Changes user password after verifying current password.
+     */
+    suspend fun changePassword(
+        userId: String,
+        currentPassword: String,
+        newPassword: String
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val key = userId.trim().removePrefix("@")
+            if (newPassword.length < 4) {
+                return@withContext Result.failure(IllegalArgumentException("New password must be at least 4 characters."))
+            }
+
+            val userDoc = db.collection("users").document(key).get().await()
+            val existing = userDoc.toObject(UserProfile::class.java)
+                ?: return@withContext Result.failure(IllegalArgumentException("User profile not found."))
+
+            if (existing.passwordHash.isNotBlank()) {
+                val isOldValid = PasswordSecurityUtil.verifyPassword(
+                    password = currentPassword,
+                    salt = existing.passwordSalt,
+                    storedHash = existing.passwordHash
+                )
+                if (!isOldValid) {
+                    return@withContext Result.failure(IllegalArgumentException("Current password does not match."))
+                }
+            }
+
+            val newSalt = PasswordSecurityUtil.generateSalt()
+            val newHash = PasswordSecurityUtil.hashPassword(newPassword, newSalt)
+
+            val updatePayload = mapOf<String, Any>(
+                "passwordHash" to newHash,
+                "passwordSalt" to newSalt
+            )
+            db.collection("users").document(key).update(updatePayload).await()
+
+            Log.i(tag, "Successfully updated password for @$key")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to change password: ${e.message}", e)
             Result.failure(e)
         }
     }
@@ -163,6 +370,13 @@ class AuthRepository(
                 "userId" to sanitizedHandle,
                 "displayName" to updatedProfile.displayName,
                 "customUserId" to updatedProfile.customUserId,
+                "passwordHash" to updatedProfile.passwordHash,
+                "passwordSalt" to updatedProfile.passwordSalt,
+                "firstName" to updatedProfile.firstName,
+                "lastName" to updatedProfile.lastName,
+                "dateOfBirth" to updatedProfile.dateOfBirth,
+                "description" to updatedProfile.description,
+                "hasCompletedOptionalSetup" to updatedProfile.hasCompletedOptionalSetup,
                 "associatedIps" to currentList,
                 "currentIp" to ip,
                 "createdAt" to updatedProfile.createdAt

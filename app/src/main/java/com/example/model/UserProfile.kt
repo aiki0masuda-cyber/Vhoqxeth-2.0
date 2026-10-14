@@ -8,6 +8,13 @@ data class UserProfile(
     val userId: String = "",
     val displayName: String = "",
     val customUserId: String = "",
+    val passwordHash: String = "",
+    val passwordSalt: String = "",
+    val firstName: String = "",
+    val lastName: String = "",
+    val dateOfBirth: String = "",
+    val description: String = "",
+    val hasCompletedOptionalSetup: Boolean = false,
     val associatedIps: List<String> = emptyList(),
     val currentIp: String = "",
     val createdAt: String = ""

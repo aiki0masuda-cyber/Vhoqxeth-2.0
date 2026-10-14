@@ -32,6 +32,13 @@ class SessionManager(context: Context) {
         val customUserId = prefs.getString(KEY_CUSTOM_USER_ID, "") ?: ""
         val displayName = prefs.getString(KEY_DISPLAY_NAME, "") ?: customUserId
         val userId = prefs.getString(KEY_USER_ID, "") ?: customUserId
+        val passwordHash = prefs.getString(KEY_PASSWORD_HASH, "") ?: ""
+        val passwordSalt = prefs.getString(KEY_PASSWORD_SALT, "") ?: ""
+        val firstName = prefs.getString(KEY_FIRST_NAME, "") ?: ""
+        val lastName = prefs.getString(KEY_LAST_NAME, "") ?: ""
+        val dateOfBirth = prefs.getString(KEY_DOB, "") ?: ""
+        val description = prefs.getString(KEY_DESCRIPTION, "") ?: ""
+        val hasCompletedOptionalSetup = prefs.getBoolean(KEY_COMPLETED_OPTIONAL_SETUP, false)
         val currentIp = prefs.getString(KEY_CURRENT_IP, "") ?: ""
         val associatedIpsSet = prefs.getStringSet(KEY_ASSOCIATED_IPS, emptySet()) ?: emptySet()
         val createdAt = prefs.getString(KEY_CREATED_AT, "") ?: ""
@@ -40,6 +47,13 @@ class SessionManager(context: Context) {
             userId = userId,
             displayName = displayName,
             customUserId = customUserId,
+            passwordHash = passwordHash,
+            passwordSalt = passwordSalt,
+            firstName = firstName,
+            lastName = lastName,
+            dateOfBirth = dateOfBirth,
+            description = description,
+            hasCompletedOptionalSetup = hasCompletedOptionalSetup,
             associatedIps = associatedIpsSet.toList(),
             currentIp = currentIp,
             createdAt = createdAt
@@ -52,6 +66,13 @@ class SessionManager(context: Context) {
             putString(KEY_USER_ID, userProfile.userId.ifBlank { userProfile.customUserId })
             putString(KEY_CUSTOM_USER_ID, userProfile.customUserId)
             putString(KEY_DISPLAY_NAME, userProfile.displayName)
+            putString(KEY_PASSWORD_HASH, userProfile.passwordHash)
+            putString(KEY_PASSWORD_SALT, userProfile.passwordSalt)
+            putString(KEY_FIRST_NAME, userProfile.firstName)
+            putString(KEY_LAST_NAME, userProfile.lastName)
+            putString(KEY_DOB, userProfile.dateOfBirth)
+            putString(KEY_DESCRIPTION, userProfile.description)
+            putBoolean(KEY_COMPLETED_OPTIONAL_SETUP, userProfile.hasCompletedOptionalSetup)
             putString(KEY_CURRENT_IP, userProfile.currentIp)
             putStringSet(KEY_ASSOCIATED_IPS, userProfile.associatedIps.toSet())
             putString(KEY_CREATED_AT, userProfile.createdAt)
@@ -87,6 +108,13 @@ class SessionManager(context: Context) {
         private const val KEY_USER_ID = "user_id"
         private const val KEY_CUSTOM_USER_ID = "custom_user_id"
         private const val KEY_DISPLAY_NAME = "display_name"
+        private const val KEY_PASSWORD_HASH = "password_hash"
+        private const val KEY_PASSWORD_SALT = "password_salt"
+        private const val KEY_FIRST_NAME = "first_name"
+        private const val KEY_LAST_NAME = "last_name"
+        private const val KEY_DOB = "date_of_birth"
+        private const val KEY_DESCRIPTION = "description"
+        private const val KEY_COMPLETED_OPTIONAL_SETUP = "has_completed_optional_setup"
         private const val KEY_CURRENT_IP = "current_ip"
         private const val KEY_ASSOCIATED_IPS = "associated_ips"
         private const val KEY_CREATED_AT = "created_at"
