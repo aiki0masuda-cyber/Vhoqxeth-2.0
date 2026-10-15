@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,7 +28,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -38,6 +39,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material.icons.filled.Wifi
@@ -60,6 +62,7 @@ import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -78,6 +81,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.AdminRepository
+import com.example.data.AppSelfHealingEngine
+import com.example.data.HealingLogEntry
 import com.example.model.RegisteredIpEntry
 import com.example.model.UserProfile
 import com.example.ui.theme.VhoqxethBorder
@@ -106,6 +111,12 @@ fun AdminPortalScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val adminRepository = remember { AdminRepository(context) }
+    val healingEngine = remember { AppSelfHealingEngine.getInstance(context) }
+
+    val totalHealedCount by healingEngine.totalHealedCount.collectAsState()
+    val isHealingScanning by healingEngine.isScanning.collectAsState()
+    val engineStatus by healingEngine.engineStatus.collectAsState()
+    val healingLogs by healingEngine.healingLogs.collectAsState()
 
     var selectedTab by remember { mutableIntStateOf(0) }
     var isLoading by remember { mutableStateOf(false) }
@@ -114,6 +125,9 @@ fun AdminPortalScreen(
     // Data lists
     var users by remember { mutableStateOf<List<UserProfile>>(emptyList()) }
     var registeredIps by remember { mutableStateOf<List<RegisteredIpEntry>>(emptyList()) }
+
+    // Quarantined user account state
+    var quarantinedUser by remember { mutableStateOf<UserProfile?>(null) }
 
     // Dialog states
     var showAddUserDialog by remember { mutableStateOf(false) }
@@ -254,6 +268,19 @@ fun AdminPortalScreen(
                     },
                     modifier = Modifier.testTag("admin_tab_ips")
                 )
+                Tab(
+                    selected = selectedTab == 2,
+                    onClick = { selectedTab = 2 },
+                    text = {
+                        Text(
+                            "AI Guardian ($totalHealedCount)",
+                            fontWeight = if (selectedTab == 2) FontWeight.Bold else FontWeight.Normal,
+                            color = if (selectedTab == 2) AdminAmber else VhoqxethTextSecondary,
+                            fontSize = 13.sp
+                        )
+                    },
+                    modifier = Modifier.testTag("admin_tab_ai_health")
+                )
             }
 
             // Status / Error message
@@ -289,6 +316,7 @@ fun AdminPortalScreen(
                 0 -> UsersTabContent(
                     users = users,
                     onAddUser = { showAddUserDialog = true },
+                    onQuarantineUser = { user -> quarantinedUser = user },
                     onEditUser = { user -> editingUser = user },
                     onDeleteUser = { user -> deletingUser = user }
                 )
@@ -302,8 +330,28 @@ fun AdminPortalScreen(
                         }
                     }
                 )
+                2 -> AiHealthTabContent(
+                    totalHealedCount = totalHealedCount,
+                    isScanning = isHealingScanning,
+                    engineStatus = engineStatus,
+                    healingLogs = healingLogs,
+                    onTriggerScan = {
+                        healingEngine.triggerManualAudit(coroutineScope) { count ->
+                            statusMessage = if (count > 0) "AI Health Audit complete: $count anomalies auto-repaired" else "AI Health Audit complete: All systems nominal"
+                        }
+                    }
+                )
             }
         }
+    }
+
+    // Quarantined Account Enclave Sheet
+    quarantinedUser?.let { target ->
+        QuarantinedAccountSheet(
+            targetUser = target,
+            onDismiss = { quarantinedUser = null },
+            onUserModified = { refreshData() }
+        )
     }
 
     // Add User Dialog
@@ -402,6 +450,7 @@ fun AdminPortalScreen(
 private fun UsersTabContent(
     users: List<UserProfile>,
     onAddUser: () -> Unit,
+    onQuarantineUser: (UserProfile) -> Unit,
     onEditUser: (UserProfile) -> Unit,
     onDeleteUser: (UserProfile) -> Unit
 ) {
@@ -483,6 +532,7 @@ private fun UsersTabContent(
                 items(filteredUsers, key = { it.customUserId }) { user ->
                     UserAdminCard(
                         user = user,
+                        onQuarantine = { onQuarantineUser(user) },
                         onEdit = { onEditUser(user) },
                         onDelete = { onDeleteUser(user) }
                     )
@@ -495,12 +545,14 @@ private fun UsersTabContent(
 @Composable
 private fun UserAdminCard(
     user: UserProfile,
+    onQuarantine: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .clickable { onQuarantine() }
             .testTag("admin_user_card_${user.customUserId}"),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = AdminCardBg),
@@ -527,44 +579,61 @@ private fun UserAdminCard(
                     )
                 }
 
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(10.dp))
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = user.displayName,
                         color = VhoqxethTextPrimary,
-                        fontSize = 15.sp,
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
                         text = "@${user.customUserId}",
                         color = VhoqxethCyanBright,
-                        fontSize = 13.sp,
+                        fontSize = 12.sp,
                         fontFamily = FontFamily.Monospace
                     )
                 }
 
+                Button(
+                    onClick = onQuarantine,
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = AdminAmber.copy(alpha = 0.2f)),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, AdminAmber),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    modifier = Modifier
+                        .height(32.dp)
+                        .testTag("quarantine_btn_${user.customUserId}")
+                ) {
+                    Icon(imageVector = Icons.Default.Shield, contentDescription = null, tint = AdminAmber, modifier = Modifier.size(13.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("QUARANTINE", color = AdminAmber, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+
+                Spacer(modifier = Modifier.width(4.dp))
+
                 IconButton(
                     onClick = onEdit,
-                    modifier = Modifier.size(36.dp).testTag("edit_user_${user.customUserId}")
+                    modifier = Modifier.size(32.dp).testTag("edit_user_${user.customUserId}")
                 ) {
                     Icon(
                         imageVector = Icons.Default.Edit,
                         contentDescription = "Edit",
                         tint = AdminAmber,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(16.dp)
                     )
                 }
 
                 IconButton(
                     onClick = onDelete,
-                    modifier = Modifier.size(36.dp).testTag("delete_user_${user.customUserId}")
+                    modifier = Modifier.size(32.dp).testTag("delete_user_${user.customUserId}")
                 ) {
                     Icon(
                         imageVector = Icons.Default.Delete,
                         contentDescription = "Delete",
                         tint = AdminCrimson,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             }
@@ -599,6 +668,239 @@ private fun UserAdminCard(
                                     color = VhoqxethCyanAccent,
                                     fontSize = 11.sp,
                                     fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AiHealthTabContent(
+    totalHealedCount: Int,
+    isScanning: Boolean,
+    engineStatus: String,
+    healingLogs: List<HealingLogEntry>,
+    onTriggerScan: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        // AI Guardian Status Card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = AdminCardBg),
+            shape = RoundedCornerShape(12.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, AdminAmber.copy(alpha = 0.5f))
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(VhoqxethOnlineGreen.copy(alpha = 0.2f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AutoAwesome,
+                                contentDescription = "AI Guardian",
+                                tint = VhoqxethOnlineGreen,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "AUTONOMOUS AI SELF-HEALING",
+                                color = AdminAmber,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp
+                            )
+                            Text(
+                                text = engineStatus,
+                                color = VhoqxethOnlineGreen,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(VhoqxethOnlineGreen)
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = "ACTIVE",
+                            color = Color.Black,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(AdminSurface)
+                            .border(0.5.dp, VhoqxethBorder, RoundedCornerShape(8.dp))
+                            .padding(10.dp)
+                    ) {
+                        Column {
+                            Text("AUTO-REPAIRED", color = VhoqxethTextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("$totalHealedCount Issues", color = AdminAmber, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(AdminSurface)
+                            .border(0.5.dp, VhoqxethBorder, RoundedCornerShape(8.dp))
+                            .padding(10.dp)
+                    ) {
+                        Column {
+                            Text("SCAN INTERVAL", color = VhoqxethTextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("Every 35s", color = VhoqxethCyanAccent, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(AdminSurface)
+                            .border(0.5.dp, VhoqxethBorder, RoundedCornerShape(8.dp))
+                            .padding(10.dp)
+                    ) {
+                        Column {
+                            Text("SUBSYSTEMS", color = VhoqxethTextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("4 Monitored", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Button(
+                    onClick = onTriggerScan,
+                    enabled = !isScanning,
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = AdminAmber),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(42.dp)
+                        .testTag("admin_run_ai_scan_button")
+                ) {
+                    if (isScanning) {
+                        CircularProgressIndicator(color = Color.Black, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Executing Deep Self-Healing Audit...", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    } else {
+                        Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Trigger Immediate AI Health Audit", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(
+            text = "CONTINUOUS DIAGNOSTIC AUDIT LOGS (${healingLogs.size})",
+            color = AdminAmber,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        if (healingLogs.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("All systems nominal. No errors detected.", color = VhoqxethTextMuted, fontSize = 13.sp)
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                contentPadding = PaddingValues(bottom = 24.dp)
+            ) {
+                items(healingLogs.reversed(), key = { it.id }) { log ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = AdminCardBg),
+                        shape = RoundedCornerShape(8.dp),
+                        border = androidx.compose.foundation.BorderStroke(0.5.dp, VhoqxethBorder)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(if (log.isAutoHealed) VhoqxethOnlineGreen else VhoqxethCyanAccent)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = log.subsystem,
+                                        color = AdminAmber,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = log.timestamp,
+                                        color = VhoqxethTextMuted,
+                                        fontSize = 10.sp,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = log.description,
+                                    color = VhoqxethTextPrimary,
+                                    fontSize = 12.sp
                                 )
                             }
                         }

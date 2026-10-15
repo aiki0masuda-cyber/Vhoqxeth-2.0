@@ -1,35 +1,29 @@
-# Password Protection, Profile Customization & Functional Settings Panel
+# Admin Quarantined Account Enclave & Autonomous AI Self-Healing System
 
-Secure Vhoqxeth accounts with salted SHA-256 password protection at registration and login, present a non-blocking post-login optional profile completion modal sheet, replace cluttered bottom navigation tabs with a clean 3-tab structure (**Chats**, **Contacts**, **Settings**), and deliver a functional Settings panel with Profile Management.
+Deliver root-level quarantined account inspection in the Admin Portal—allowing administrators to tap any user to open a secured modal overlay sheet with full authority to view, send, and delete messages, manage contacts, and inspect identity—paired with a continuous background AI error detection and silent auto-healing engine.
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> The following product decisions were confirmed during interactive consultation:
-> - **Bottom Navigation Structure**: Simplified to 3 core tabs: **Chats**, **Contacts**, and **Settings** (permanently removing *Calls*, *Channels*, and *Vault*).
-> - **Profile Settings & Editability**: Inside Settings, the **Profile Settings** screen allows viewing and editing Visible Name, First Name, Last Name, Date of Birth, Description/Bio, and Password. The **Handle / User ID** is immutable and securely locked.
-> - **Settings Categories**:
->   1. **Profile Settings**: Personal identity customization and password change with current password validation.
->   2. **Network IP & Connection Status**: Live device IP, roaming network recognition, and Firestore heartbeat.
->   3. **Notifications & Privacy**: Encryption toggles, alert tones, and read receipt preferences.
->   4. **Local Cache & Diagnostics**: Cache cleanup tool and diagnostic latency monitor.
->   5. **Protocol Charter**: Direct access to Privacy Policy, Terms & Conditions, and App Info.
->   6. **Sign Out**: Clean enclave logout returning to the auth gateway.
-> - **Registration & Login**: Visible Name, Handle, and Password are required. First Name, Last Name, DOB, and Bio are optional and can be filled or skipped post-login.
+> The following product decisions were established during interactive consultation:
+> - **Quarantined Session UI**: Rendered as a dedicated **Modal Overlay Sheet** directly in the Admin Panel with quick action tabs (**Messages & Threads**, **Contacts Roster**, **Identity & Credentials**, and **Enclave Audit Log**).
+> - **Administrative Authority**: Full root authority inside quarantine—inspect all conversation threads, view encrypted message histories, send new messages directly under the quarantined user's persona, delete individual messages, add/remove contacts, and view or reset authentication state.
+> - **AI Error Detection & Auto-Healing**: Operates via a **continuous background engine** that silently detects and resolves system anomalies (session cache drift, orphan threads, broken reciprocal contacts, Firestore listener drops, and unhandled state faults) without interrupting the user experience.
+> - **Zero Disruption to User Privacy on Home Screens**: The quarantined enclave remains strictly isolated within the password-protected Admin Portal; standard users on home screens only experience the benefits of silent auto-healing and stability.
 
 ---
 
 ## 1. Overview & Core Concept
 
 - **What It Does**:
-  1. **Password-Gated Authentication**: Enforces passwords during account creation and login, preventing unauthorized actors on the same local network or IP from accessing personal conversations.
-  2. **Post-Authentication Profile Setup**: Displays a clean modal sheet after registration or initial login for optional details (First Name, Last Name, DOB, Bio) with **Save & Continue** and **Skip for Now** actions.
-  3. **Streamlined Navigation (3 Tabs)**:
-     - **Chats**: Active conversations and real-time messaging.
-     - **Contacts**: Roster of added peers with real-time "Add Contact by User ID" discovery.
-     - **Settings**: Functional command center for profile management, network telemetry, and app preferences.
-  4. **Settings & Profile Customizer**: Central hub where users can update visible name, personal bio, full name, birthday, and account password whenever desired, with handle immutability preserved.
-- **Target Audience / Persona**: Security-conscious mesh chat users who desire a minimalist, intuitive chat app without bloatware navigation tabs.
+  1. **Quarantined Account Enclave**: Allows root admins inside the Admin Portal to click any user in the Users list to instantly launch a high-privilege quarantined workspace. In this enclave, the admin can navigate the user's active conversations, send real messages as that user, delete compromised or abusive messages, add/remove contacts, and examine raw profile attributes.
+  2. **Autonomous AI Self-Healing Engine (`AppSelfHealingEngine`)**: An active background scanner running in coroutine scope that continuously monitors app subsystems:
+     - **Session & Identity Integrity**: Detects inconsistencies between local DataStore/Prefs and Firestore user documents, auto-repairing profile attributes.
+     - **Reciprocal Contact Mesh**: Checks for asymmetrical contact relationships and silently auto-provisions missing reciprocal contact records.
+     - **Thread Consistency & Message Ordering**: Identifies duplicate message IDs, malformed participant arrays, or broken timestamps and automatically cleans them up.
+     - **Network & Listener Health**: Monitors Firestore connectivity and automatically recreates dropped real-time snapshot listeners.
+     - **Silent Operation & Diagnostics**: Runs unobtrusively in the background while logging healed issues to the Diagnostics Log in Settings and the Admin Portal.
+- **Target Persona**: Network administrators and operators managing mesh communication clusters who need diagnostic intervention capabilities and automated resilience against runtime errors.
 
 ---
 
@@ -37,122 +31,112 @@ Secure Vhoqxeth accounts with salted SHA-256 password protection at registration
 
 ### Key User Flows
 
-1. **Account Registration**:
-   - Fields: Visible Display Name, Handle/User ID (`@username`), Password, and Confirm Password with visibility toggles.
-   - Validates password strength (minimum length) and handle availability.
-   - On completion, logs in and presents the optional details onboarding modal sheet.
+1. **Opening Quarantined Account Session**:
+   - In Admin Portal -> **Users** tab, tapping any `UserAdminCard` or its new **"Enter Quarantine"** shield action opens the `QuarantinedAccountSheet`.
+   - The sheet opens as an elevated modal overlay featuring an Amber & Crimson security banner: `"QUARANTINE ENCLAVE: @{handle}"` with live status, device IP, and root authority tags.
 
-2. **Account Login**:
-   - Fields: Handle/User ID and Password.
-   - Verifies against salted SHA-256 hash in Firestore.
-   - Prevents unauthenticated bypass on recognized IPs.
+2. **Quarantine Quick Action Tabs**:
+   - **Tab 1: Messages & Threads**:
+     - Lists all active conversation threads for the quarantined user.
+     - Clicking a thread expands the conversation view with full message history.
+     - Admin can type and send messages (tagged with admin persona or native user handle).
+     - Admin can delete any message directly with one tap and immediate Firestore deletion.
+   - **Tab 2: Contacts Roster**:
+     - Displays all contacts connected to the quarantined account.
+     - "+ Add Contact" allows injecting a peer directly into the account's roster.
+     - "Remove" deletes the contact reciprocal connection.
+   - **Tab 3: Identity & Access**:
+     - Displays Display Name, Custom User ID, Registered IP, Salted Password Hash, and Optional Profile details.
+     - Quick actions to update visible attributes or trigger emergency password resets.
+   - **Tab 4: Audit Log**:
+     - Displays live timestamped logs of all administrative actions performed within this quarantine session.
 
-3. **Optional Profile Setup Modal (`OptionalProfileSetupSheet`)**:
-   - Modal bottom sheet displayed upon registration or first login if optional attributes are empty.
-   - Fields: First Name (optional), Last Name (optional), Date of Birth (optional), Description (optional).
-   - Buttons: **Save & Continue** (primary) and **Skip for Now** (outlined).
-
-4. **3-Tab Bottom Navigation**:
-   - **Tab 1: Chats**: Conversation list, unread filter chips, empty state card, and direct messaging sheet.
-   - **Tab 2: Contacts**: Searchable contact roster, "+ Add Peer" action button, peer status badges, and one-tap thread launching.
-   - **Tab 3: Settings**: Comprehensive settings list with clean categorized card groups.
-
-5. **Settings Panel & Profile Settings Screen**:
-   - **Profile Settings Item**: Tapping opens the Profile Editor with avatar preview, locked handle (`@handle` with lock icon), editable Visible Name, First Name, Last Name, DOB, Description, and **"Update Password"** dialog.
-   - **Network & Enclave Status**: Live IP address, Firestore cluster status, and cryptographic enclave indicator.
-   - **Privacy & Notifications**: Toggles for notification alerts and message encryption headers.
-   - **Local Storage & Cache**: Displays cached session size with a "Clear Cache" button.
-   - **Protocol Charter**: Privacy Policy and Terms & Conditions modal viewers.
-   - **Sign Out Button**: Safe session clearance with confirmation prompt.
+3. **Autonomous AI Self-Healing in Background**:
+   - Runs in the background on app startup and periodic intervals (every 45 seconds).
+   - Performs automated health checks:
+     - Checks session validity and recovers missing profile data.
+     - Verifies database socket readiness and reconnects if dropped.
+     - Validates local contact lists against cloud states.
+   - When an issue is fixed, it registers a silent repair event in `DiagnosticsRepository`.
+   - In **Settings -> Local Cache & Diagnostics**, users see an "Autonomous AI Health Guardian: ACTIVE (All systems nominal - X issues auto-repaired)".
 
 ---
 
 ## 3. Key Product Decisions & Trade-Offs
 
-- **Decision 1: Three Dedicated Tabs (Chats, Contacts, Settings)**:
-  - *Chosen Approach*: Replace the previous 5 tabs (*Chats, Calls, Channels, Vault, Settings*) with a focused 3-tab layout.
-  - *Why*: Eliminates non-functional dead ends (*Calls, Vault, Channels*) and elevates Contacts into a dedicated second tab for fast peer navigation.
-- **Decision 2: Immutable Handle in Profile Settings**:
-  - *Chosen Approach*: Allow editing Visible Name, First Name, Last Name, DOB, and Bio, but lock the Handle (`customUserId`).
-  - *Why*: The handle is the primary key in Firestore (`/users/{userId}` and reciprocal contacts `/users/{peer}/contacts/{userId}`). Changing the handle would break reciprocal contacts and deterministic thread IDs (`thread_userA_userB`).
-- **Decision 3: Password Update Security Guard**:
-  - *Chosen Approach*: Updating the password requires entering the current password first.
-  - *Why*: Ensures that even if an unlocked device is temporarily in another person's hands, they cannot lock out the true owner by silently changing the password.
+- **Decision 1: Direct In-Place Quarantined Sheet vs. Global Session Swap**:
+  - *Chosen Approach*: Open the quarantined session inside an isolated modal bottom sheet within the Admin Portal rather than replacing the device's primary session.
+  - *Why*: Prevents the admin's own credentials and device session from being overwritten. The admin can inspect multiple user accounts in succession and immediately return to the admin dashboard.
+- **Decision 2: Comprehensive Authority (Read, Send, Delete)**:
+  - *Chosen Approach*: Provide full read, send, and delete controls inside the quarantine interface.
+  - *Why*: Allows admins to troubleshoot delivery problems, remove illicit messages, or test account communications directly.
+- **Decision 3: Silent Background Auto-Healing**:
+  - *Chosen Approach*: Execute error recovery routines asynchronously in background coroutines without disruptive popups or alerts.
+  - *Why*: Ensures seamless user experience while preventing silent data drift and stale synchronization.
 
 ---
 
 ## 4. Technical Architecture & Data Strategy
 
-### System Layout
+### System Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                      MainActivity / Scaffold                    │
-│                                                                 │
-│  ┌─────────────────┐   ┌───────────────────┐   ┌─────────────┐  │
-│  │   Chats Tab     │   │   Contacts Tab    │   │ Settings Tab│  │
-│  │   - Threads     │   │   - Active Roster │   │ - Profile   │  │
-│  │   - Direct Chat │   │   - Add Peer Modal│   │ - Network IP│  │
-│  │   - Empty State │   │   - Peer Actions  │   │ - Privacy   │  │
-│  └─────────────────┘   └───────────────────┘   │ - Cache     │  │
-│                                                │ - Charter   │  │
-│                                                └─────────────┘  │
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │      Simplified NavigationBar (Chats | Contacts | Settings)│ │
-│  └───────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────┐
+│                        AdminPortalScreen                               │
+│  ┌──────────────────────┐  ┌────────────────────────────────────────┐  │
+│  │ Registered IPs Tab   │  │ Users Tab                              │  │
+│  └──────────────────────┘  │  - User Card -> [Quarantine Click]    │  │
+│                            └───────────────────┬────────────────────┘  │
+│                                                │                       │
+│                                                ▼                       │
+│                       ┌─────────────────────────────────────────────┐  │
+│                       │    QuarantinedAccountSheet (Modal Overlay)  │  │
+│                       │ ┌─────────────────────────────────────────┐ │  │
+│                       │ │ Tabs: Messages | Contacts | Identity    │ │  │
+│                       │ ├─────────────────────────────────────────┤ │  │
+│                       │ │ - Live Message Viewer (Send / Delete)   │ │  │
+│                       │ │ - Contacts Manager (Add / Remove)       │ │  │
+│                       │ │ - Enclave Audit Log                     │ │  │
+│                       │ └─────────────────────────────────────────┘ │  │
+│                       └─────────────────────────────────────────────┘  │
+└────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────┐
+│             Autonomous AI Background Engine (AppSelfHealingEngine)     │
+│  ┌────────────────────┐  ┌─────────────────────┐  ┌──────────────────┐ │
+│  │ Session Auditor    │  │ Mesh Sync Auditor   │  │ Listener Guardian│ │
+│  │ - Fixes drift      │  │ - Reciprocal peers  │  │ - Auto-reconnect │ │
+│  └────────────────────┘  └─────────────────────┘  └──────────────────┘ │
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Data Schema Updates (`UserProfile.kt` & `firebase-blueprint.json`)
+### Components to Build / Update
 
-```kotlin
-data class UserProfile(
-    val userId: String = "",
-    val displayName: String = "",
-    val customUserId: String = "",
-    val passwordHash: String = "",
-    val passwordSalt: String = "",
-    val firstName: String = "",
-    val lastName: String = "",
-    val dateOfBirth: String = "",
-    val description: String = "",
-    val hasCompletedOptionalSetup: Boolean = false,
-    val associatedIps: List<String> = emptyList(),
-    val currentIp: String = "",
-    val createdAt: String = ""
-)
-```
-
-### Security Rules (`firestore.rules`)
-Ensure `isValidUser` validates the updated profile payload and permits updates from verified sessions.
+1. **`AppSelfHealingEngine.kt`** (`com.example.data`):
+   - Background singleton coroutine worker.
+   - Detects corrupted local preferences, dead listeners, and orphaned records.
+   - Auto-executes repairs and logs healed events to memory and diagnostics.
+2. **`QuarantinedAccountSheet.kt`** (`com.example.ui.admin`):
+   - Modal bottom sheet displaying the quarantined user session with Amber/Crimson theme.
+   - Quick action tabs: Messages, Contacts, Identity, and Enclave Logs.
+   - Embedded live thread viewer with send and delete capabilities.
+3. **`AdminPortalScreen.kt`**:
+   - Connect clicking on any user card directly to launching the `QuarantinedAccountSheet`.
+   - Pass `adminRepository` and `meshChatRepository` for root operations.
+4. **`MainActivity.kt`**:
+   - Initialize and start `AppSelfHealingEngine` upon app launch.
+5. **`SettingsTabContent.kt`**:
+   - Display AI Auto-Healing status and repair tally under Diagnostics.
 
 ---
 
-## 5. Implementation Phases
+## 5. Verification Plan
 
-1. **Phase 1: Cryptographic Password & Data Schema Layer**:
-   - Update `UserProfile.kt` and `firebase-blueprint.json` with password hash, salt, and optional identity fields.
-   - Implement `PasswordSecurityUtil.kt` (SHA-256 salted hashing and verification).
-   - Update `AuthRepository.kt` with password registration, authentication, profile updates, and password change methods.
-   - Update `firestore.rules` and verify with JavaScript rules unit tests.
-2. **Phase 2: AuthGatewayScreen Password Registration & Login**:
-   - Add Password and Confirm Password inputs with visibility toggles to `RegisterForm`.
-   - Update `LinkExisting` and `Recognized` forms to mandate password entry.
-3. **Phase 3: Post-Login Optional Profile Setup Modal**:
-   - Create `OptionalProfileSetupSheet.kt` with First Name, Last Name, DOB, Description, **Save Details**, and **Skip for Now** actions.
-   - Wire trigger in `ChatListScreen` / `MainActivity` upon login/registration when `!hasCompletedOptionalSetup`.
-4. **Phase 4: Simplified 3-Tab Navigation & Contacts Screen**:
-   - Update bottom navigation in `ChatListScreen` to have exactly 3 tabs: **Chats**, **Contacts**, and **Settings**.
-   - Create `ContactsTabContent.kt` displaying the full user contact roster with search and "+ Add Peer by User ID" CTA.
-5. **Phase 5: Full Settings Panel & Profile Editor**:
-   - Create `SettingsScreenContent.kt` featuring:
-     - Profile Settings (view/edit visible name, full name, DOB, bio; change password; locked handle).
-     - Network IP & Status card.
-     - Notifications & Privacy toggles card.
-     - Local Cache & Diagnostics card with cache clear button.
-     - Legal & Protocol Charter card.
-     - Sign Out button.
-   - Create `ProfileEditorDialog.kt` and `ChangePasswordDialog.kt`.
-6. **Phase 6: Testing & Verification**:
-   - Run compilation check (`compile_applet`).
-   - Run unit & Robolectric tests (`gradle :app:testDebugUnitTest`).
+1. **Compilation Check**: Run `compile_applet` to ensure Kotlin compilation and Compose layouts succeed.
+2. **Admin Quarantined Access Verification**:
+   - Navigate to Admin Portal -> Users list.
+   - Click on any user card -> verify `QuarantinedAccountSheet` opens with correct user handle.
+   - Test viewing messages, sending an admin message, deleting a message, and viewing contacts roster.
+3. **AI Self-Healing Verification**:
+   - Verify `AppSelfHealingEngine` runs continuously in background.
+   - Verify self-healing diagnostics entry in Settings and Admin Portal.

@@ -416,4 +416,60 @@ class MeshChatRepository(
             Result.failure(e)
         }
     }
+
+    /**
+     * Deletes a message from a thread subcollection.
+     */
+    suspend fun deleteMessage(
+        threadId: String,
+        messageId: String
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            db.collection("threads")
+                .document(threadId)
+                .collection("messages")
+                .document(messageId)
+                .delete()
+                .await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to delete message: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Removes a contact from a user's roster and removes reciprocal link.
+     */
+    suspend fun removeContact(
+        userHandle: String,
+        contactHandle: String
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val u = userHandle.trim().removePrefix("@").lowercase()
+            val c = contactHandle.trim().removePrefix("@").lowercase()
+
+            db.collection("users")
+                .document(u)
+                .collection("contacts")
+                .document(c)
+                .delete()
+                .await()
+
+            // Also clean reciprocal contact
+            try {
+                db.collection("users")
+                    .document(c)
+                    .collection("contacts")
+                    .document(u)
+                    .delete()
+                    .await()
+            } catch (_: Exception) {}
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to remove contact: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
 }

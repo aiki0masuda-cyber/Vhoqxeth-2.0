@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -21,6 +22,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import com.example.data.AppSelfHealingEngine
 import com.example.data.AuthRepository
 import com.example.data.DeviceIpManager
 import com.example.data.SessionManager
@@ -66,6 +68,11 @@ fun VhoqxethApp() {
     val coroutineScope = rememberCoroutineScope()
     val authRepository = remember { AuthRepository(context) }
     val ipManager = remember { DeviceIpManager(context) }
+    val healingEngine = remember { AppSelfHealingEngine.getInstance(context) }
+
+    LaunchedEffect(Unit) {
+        healingEngine.startContinuousScanning(this)
+    }
 
     var currentScreen by remember { mutableStateOf(AppScreen.SPLASH) }
     var currentUserProfile by remember { mutableStateOf<UserProfile?>(sessionManager.getSavedUserProfile()) }

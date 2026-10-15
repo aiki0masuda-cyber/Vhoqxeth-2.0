@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Cached
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Edit
@@ -41,10 +42,13 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -55,6 +59,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.AppSelfHealingEngine
 import com.example.data.AuthRepository
 import com.example.model.UserProfile
 import com.example.ui.theme.VhoqxethBorder
@@ -86,6 +91,11 @@ fun SettingsTabContent(
 ) {
     var showProfileEditor by remember { mutableStateOf(false) }
     var showChangePassword by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val healingEngine = remember { AppSelfHealingEngine.getInstance(context) }
+    val totalHealedCount by healingEngine.totalHealedCount.collectAsState()
 
     var notificationsEnabled by remember { mutableStateOf(true) }
     var previewLockEnabled by remember { mutableStateOf(false) }
@@ -367,6 +377,55 @@ fun SettingsTabContent(
                     Text(
                         text = "Clean",
                         color = VhoqxethIndigo600,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                HorizontalDivider(color = VhoqxethBorder, thickness = 0.5.dp)
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            healingEngine.triggerManualAudit(coroutineScope) { count ->
+                                onShowSnackbar(if (count > 0) "AI Self-Healing: Repaired $count anomalies" else "AI Self-Healing: All subsystems nominal")
+                            }
+                        }
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(VhoqxethOnlineGreen.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AutoAwesome,
+                            contentDescription = "AI Guardian",
+                            tint = VhoqxethOnlineGreen,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Autonomous AI Self-Healing",
+                            color = VhoqxethTextPrimary,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = if (totalHealedCount > 0) "Continuous scan • $totalHealedCount auto-repaired" else "Continuous scan • All systems nominal",
+                            color = VhoqxethOnlineGreen,
+                            fontSize = 12.sp
+                        )
+                    }
+                    Text(
+                        text = "Audit",
+                        color = VhoqxethCyanAccent,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold
                     )
