@@ -1,142 +1,165 @@
-# Admin Quarantined Account Enclave & Autonomous AI Self-Healing System
+# DAV InfoExchange — Institutional Rebranding & Faculty-Student Role Architecture
 
-Deliver root-level quarantined account inspection in the Admin Portal—allowing administrators to tap any user to open a secured modal overlay sheet with full authority to view, send, and delete messages, manage contacts, and inspect identity—paired with a continuous background AI error detection and silent auto-healing engine.
+Transform the application from **DAV Cheeka** to **DAV InfoExchange** across the entire UI, adopt the official **DAV College Managing Committee** emblem (ESTD 1886) as the primary launcher and in-app insignia, and introduce dedicated **Student** vs **Teacher** role selection during account onboarding and administration.
 
-## User Review & Critical Decisions
+---
+
+## User Review & Clarifications Alignment
 
 > [!IMPORTANT]
-> The following product decisions were established during interactive consultation:
-> - **Quarantined Session UI**: Rendered as a dedicated **Modal Overlay Sheet** directly in the Admin Panel with quick action tabs (**Messages & Threads**, **Contacts Roster**, **Identity & Credentials**, and **Enclave Audit Log**).
-> - **Administrative Authority**: Full root authority inside quarantine—inspect all conversation threads, view encrypted message histories, send new messages directly under the quarantined user's persona, delete individual messages, add/remove contacts, and view or reset authentication state.
-> - **AI Error Detection & Auto-Healing**: Operates via a **continuous background engine** that silently detects and resolves system anomalies (session cache drift, orphan threads, broken reciprocal contacts, Firestore listener drops, and unhandled state faults) without interrupting the user experience.
-> - **Zero Disruption to User Privacy on Home Screens**: The quarantined enclave remains strictly isolated within the password-protected Admin Portal; standard users on home screens only experience the benefits of silent auto-healing and stability.
+> The following user-confirmed specifications guide this implementation:
+> 1. **Application Name**: Rename to **DAV InfoExchange** throughout the entire UI, launcher label, metadata, and build configurations.
+> 2. **Official DAV Emblem**: Adopt the uploaded DAV College Managing Committee crest (circular seal with "D.A.V. COLLEGE MANAGING COMMITTEE", radiant rising sun, sacred "ओ३म्", blue water ripples, laurel wreath, and "ESTD 1886" ribbon banner) with clean presentation as requested ("Just like as it is").
+> 3. **Role-Based Onboarding (Student vs Teacher)**:
+>    - During user registration or admin creation, user first chooses: **Student** or **Teacher**.
+>    - **Teacher Fields**: Prompts for **Subject / Department** and **Employee ID / Designation**.
+>    - **Student Fields**: Prompts for **Grade / Class**, **Section**, and **Subject Specialization**.
+> 4. **Visual Differentiation**:
+>    - **Verified Faculty Badge**: Displays a prominent `[ FACULTY ✓ ]` badge with verified shield icon beside Teacher handles in chat bubbles, conversation threads, peer rosters, and profile cards.
+> 5. **Core Architecture Preserved**:
+>    - Admin Quarantined Enclave with full authority.
+>    - Autonomous AI Self-Healing Guardian.
+>    - Salted SHA-256 password cryptography and real-time Firestore listeners.
 
 ---
 
-## 1. Overview & Core Concept
+## 1. User Flows & Interface Changes
 
-- **What It Does**:
-  1. **Quarantined Account Enclave**: Allows root admins inside the Admin Portal to click any user in the Users list to instantly launch a high-privilege quarantined workspace. In this enclave, the admin can navigate the user's active conversations, send real messages as that user, delete compromised or abusive messages, add/remove contacts, and examine raw profile attributes.
-  2. **Autonomous AI Self-Healing Engine (`AppSelfHealingEngine`)**: An active background scanner running in coroutine scope that continuously monitors app subsystems:
-     - **Session & Identity Integrity**: Detects inconsistencies between local DataStore/Prefs and Firestore user documents, auto-repairing profile attributes.
-     - **Reciprocal Contact Mesh**: Checks for asymmetrical contact relationships and silently auto-provisions missing reciprocal contact records.
-     - **Thread Consistency & Message Ordering**: Identifies duplicate message IDs, malformed participant arrays, or broken timestamps and automatically cleans them up.
-     - **Network & Listener Health**: Monitors Firestore connectivity and automatically recreates dropped real-time snapshot listeners.
-     - **Silent Operation & Diagnostics**: Runs unobtrusively in the background while logging healed issues to the Diagnostics Log in Settings and the Admin Portal.
-- **Target Persona**: Network administrators and operators managing mesh communication clusters who need diagnostic intervention capabilities and automated resilience against runtime errors.
+### 1.1 Splash & Authentication Gateway
+- **Splash Screen**:
+  - Displays the official DAV College Managing Committee insignia.
+  - Title: **DAV InfoExchange**.
+  - Subtitle: **DAV COLLEGE MANAGING COMMITTEE • ESTD 1886**.
+- **Auth Gateway Screen**:
+  - Top header and brand card display the DAV emblem and **DAV InfoExchange** title.
+  - In the Registration / Sign-Up tab:
+    - User enters Visible Name, Handle (`@username`), Password, and Confirm Password.
+    - Immediately below, an interactive Role Selector appears:
+      - **[ Student ]** (Icon: `School`) vs **[ Teacher ]** (Icon: `WorkspacePremium`).
+    - Depending on the selected role, the initial scholastic onboarding pre-configures the account.
 
----
+### 1.2 Academic Profile Setup & Editing
+- **Optional Profile Setup Sheet & Profile Editor Dialog**:
+  - If **Student**:
+    - Grade / Class dropdown or input (e.g., "10", "11", "12")
+    - Section (e.g., "A", "B", "C")
+    - Subject Interests / Bio
+  - If **Teacher**:
+    - Department / Subject Area (e.g., "Mathematics & Computing", "Department of Physics")
+    - Designation / Employee ID (e.g., "Senior PGT Lecturer", "DAV-FAC-204")
+    - Academic Bio & Office Hours (e.g., "Senior Wing • Room 204")
 
-## 2. User Experience & Visual Design
+### 1.3 Chat List & Conversation Threads
+- **Messages & Headers**:
+  - Messages sent by Teachers display a distinctive `[ FACULTY ✓ ]` verified badge with sky-blue/indigo highlight next to their name.
+  - Student messages display their class badge (e.g., `Class 10-B`).
 
-### Key User Flows
+### 1.4 Directory / Contacts Roster
+- Directory entries display role filter chips (`All`, `Faculty`, `Students`).
+- Teacher contact cards feature an institutional graduation cap/shield icon, designation, and department details.
 
-1. **Opening Quarantined Account Session**:
-   - In Admin Portal -> **Users** tab, tapping any `UserAdminCard` or its new **"Enter Quarantine"** shield action opens the `QuarantinedAccountSheet`.
-   - The sheet opens as an elevated modal overlay featuring an Amber & Crimson security banner: `"QUARANTINE ENCLAVE: @{handle}"` with live status, device IP, and root authority tags.
-
-2. **Quarantine Quick Action Tabs**:
-   - **Tab 1: Messages & Threads**:
-     - Lists all active conversation threads for the quarantined user.
-     - Clicking a thread expands the conversation view with full message history.
-     - Admin can type and send messages (tagged with admin persona or native user handle).
-     - Admin can delete any message directly with one tap and immediate Firestore deletion.
-   - **Tab 2: Contacts Roster**:
-     - Displays all contacts connected to the quarantined account.
-     - "+ Add Contact" allows injecting a peer directly into the account's roster.
-     - "Remove" deletes the contact reciprocal connection.
-   - **Tab 3: Identity & Access**:
-     - Displays Display Name, Custom User ID, Registered IP, Salted Password Hash, and Optional Profile details.
-     - Quick actions to update visible attributes or trigger emergency password resets.
-   - **Tab 4: Audit Log**:
-     - Displays live timestamped logs of all administrative actions performed within this quarantine session.
-
-3. **Autonomous AI Self-Healing in Background**:
-   - Runs in the background on app startup and periodic intervals (every 45 seconds).
-   - Performs automated health checks:
-     - Checks session validity and recovers missing profile data.
-     - Verifies database socket readiness and reconnects if dropped.
-     - Validates local contact lists against cloud states.
-   - When an issue is fixed, it registers a silent repair event in `DiagnosticsRepository`.
-   - In **Settings -> Local Cache & Diagnostics**, users see an "Autonomous AI Health Guardian: ACTIVE (All systems nominal - X issues auto-repaired)".
+### 1.5 Admin Portal & Quarantined Enclave
+- In the "Add User" dialog:
+  - Admin selects **Student** or **Teacher**, with input fields tailored to the chosen role.
+- In the **Quarantined Account Enclave**:
+  - Displays whether the inspected user is a Faculty Member or Student.
+  - Admin can update role attributes (Department, Employee ID, Grade, Section).
 
 ---
 
-## 3. Key Product Decisions & Trade-Offs
+## 2. Technical Architecture & Data Schema Changes
 
-- **Decision 1: Direct In-Place Quarantined Sheet vs. Global Session Swap**:
-  - *Chosen Approach*: Open the quarantined session inside an isolated modal bottom sheet within the Admin Portal rather than replacing the device's primary session.
-  - *Why*: Prevents the admin's own credentials and device session from being overwritten. The admin can inspect multiple user accounts in succession and immediately return to the admin dashboard.
-- **Decision 2: Comprehensive Authority (Read, Send, Delete)**:
-  - *Chosen Approach*: Provide full read, send, and delete controls inside the quarantine interface.
-  - *Why*: Allows admins to troubleshoot delivery problems, remove illicit messages, or test account communications directly.
-- **Decision 3: Silent Background Auto-Healing**:
-  - *Chosen Approach*: Execute error recovery routines asynchronously in background coroutines without disruptive popups or alerts.
-  - *Why*: Ensures seamless user experience while preventing silent data drift and stale synchronization.
+### 2.1 Model Updates (`UserProfile.kt`)
+Extend `UserProfile` with role attributes:
+```kotlin
+data class UserProfile(
+    val userId: String = "",
+    val displayName: String = "",
+    val customUserId: String = "",
+    val passwordHash: String = "",
+    val passwordSalt: String = "",
+    val role: String = "STUDENT",             // "STUDENT" or "TEACHER"
+    val designation: String = "",             // e.g. "Senior PGT", "Faculty Member"
+    val department: String = "",              // e.g. "Department of Mathematics"
+    val employeeId: String = "",              // e.g. "DAV-FAC-102"
+    val grade: String = "",                   // e.g. "10", "12"
+    val section: String = "",                 // e.g. "A", "B"
+    val subject: String = "",
+    val description: String = "",
+    val firstName: String = "",
+    val lastName: String = "",
+    val dateOfBirth: String = "",
+    val hasCompletedOptionalSetup: Boolean = false,
+    val associatedIps: List<String> = emptyList(),
+    val currentIp: String = "",
+    val createdAt: String = ""
+) {
+    val isTeacher: Boolean get() = role.equals("TEACHER", ignoreCase = true)
 
----
-
-## 4. Technical Architecture & Data Strategy
-
-### System Architecture
-
+    val scholasticBadge: String
+        get() = if (isTeacher) {
+            if (designation.isNotBlank()) designation else "Faculty"
+        } else {
+            val g = grade.trim()
+            val s = section.trim()
+            when {
+                g.isNotBlank() && s.isNotBlank() -> "Class $g-$s"
+                g.isNotBlank() -> "Class $g"
+                s.isNotBlank() -> "Sec $s"
+                else -> "Student"
+            }
+        }
+}
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        AdminPortalScreen                               │
-│  ┌──────────────────────┐  ┌────────────────────────────────────────┐  │
-│  │ Registered IPs Tab   │  │ Users Tab                              │  │
-│  └──────────────────────┘  │  - User Card -> [Quarantine Click]    │  │
-│                            └───────────────────┬────────────────────┘  │
-│                                                │                       │
-│                                                ▼                       │
-│                       ┌─────────────────────────────────────────────┐  │
-│                       │    QuarantinedAccountSheet (Modal Overlay)  │  │
-│                       │ ┌─────────────────────────────────────────┐ │  │
-│                       │ │ Tabs: Messages | Contacts | Identity    │ │  │
-│                       │ ├─────────────────────────────────────────┤ │  │
-│                       │ │ - Live Message Viewer (Send / Delete)   │ │  │
-│                       │ │ - Contacts Manager (Add / Remove)       │ │  │
-│                       │ │ - Enclave Audit Log                     │ │  │
-│                       │ └─────────────────────────────────────────┘ │  │
-│                       └─────────────────────────────────────────────┘  │
-└────────────────────────────────────────────────────────────────────────┘
 
-┌────────────────────────────────────────────────────────────────────────┐
-│             Autonomous AI Background Engine (AppSelfHealingEngine)     │
-│  ┌────────────────────┐  ┌─────────────────────┐  ┌──────────────────┐ │
-│  │ Session Auditor    │  │ Mesh Sync Auditor   │  │ Listener Guardian│ │
-│  │ - Fixes drift      │  │ - Reciprocal peers  │  │ - Auto-reconnect │ │
-│  └────────────────────┘  └─────────────────────┘  └──────────────────┘ │
-└────────────────────────────────────────────────────────────────────────┘
-```
-
-### Components to Build / Update
-
-1. **`AppSelfHealingEngine.kt`** (`com.example.data`):
-   - Background singleton coroutine worker.
-   - Detects corrupted local preferences, dead listeners, and orphaned records.
-   - Auto-executes repairs and logs healed events to memory and diagnostics.
-2. **`QuarantinedAccountSheet.kt`** (`com.example.ui.admin`):
-   - Modal bottom sheet displaying the quarantined user session with Amber/Crimson theme.
-   - Quick action tabs: Messages, Contacts, Identity, and Enclave Logs.
-   - Embedded live thread viewer with send and delete capabilities.
-3. **`AdminPortalScreen.kt`**:
-   - Connect clicking on any user card directly to launching the `QuarantinedAccountSheet`.
-   - Pass `adminRepository` and `meshChatRepository` for root operations.
-4. **`MainActivity.kt`**:
-   - Initialize and start `AppSelfHealingEngine` upon app launch.
-5. **`SettingsTabContent.kt`**:
-   - Display AI Auto-Healing status and repair tally under Diagnostics.
+### 2.2 App Icon & Platform Synchronizations
+1. **`metadata.json`**:
+   - `name`: `"DAV InfoExchange"`
+   - `description`: `"Official scholastic communication exchange for DAV institutions, supporting students and faculty."`
+2. **`app/src/main/res/values/strings.xml`**:
+   - `app_name`: `"DAV InfoExchange"`
+   - `app_full_name`: `"DAV InfoExchange"`
+   - `institution_name`: `"DAV College Managing Committee"`
+3. **`settings.gradle.kts`**:
+   - `rootProject.name = "DAV InfoExchange"`
+4. **App Icon Asset Generation**:
+   - Centered circular DAV College Managing Committee emblem with crisp white background as requested (`ic_launcher_background.xml` = `#FFFFFF`).
+   - Standard 66dp safe-zone layer in `ic_launcher_foreground.xml`.
+   - PNG conversions across all five density folders (`mdpi`, `hdpi`, `xhdpi`, `xxhdpi`, `xxxhdpi`).
 
 ---
 
-## 5. Verification Plan
+## 3. Step-by-Step Implementation Steps
 
-1. **Compilation Check**: Run `compile_applet` to ensure Kotlin compilation and Compose layouts succeed.
-2. **Admin Quarantined Access Verification**:
-   - Navigate to Admin Portal -> Users list.
-   - Click on any user card -> verify `QuarantinedAccountSheet` opens with correct user handle.
-   - Test viewing messages, sending an admin message, deleting a message, and viewing contacts roster.
-3. **AI Self-Healing Verification**:
-   - Verify `AppSelfHealingEngine` runs continuously in background.
-   - Verify self-healing diagnostics entry in Settings and Admin Portal.
+1. **Step 1: Launcher Icon & Branding Assets**
+   - Create official DAV emblem drawable asset `ic_dav_official_crest.png` / `jpg`.
+   - Update `ic_launcher_background.xml` to `#FFFFFF` and `ic_launcher_foreground.xml` to reference the official crest.
+   - Generate raster densities for `ic_launcher.png` and `ic_launcher_round.png`.
+
+2. **Step 2: Platform Identity Update**
+   - Update `metadata.json`, `strings.xml`, and `settings.gradle.kts`.
+
+3. **Step 3: UserProfile Schema Extension**
+   - Add `role`, `designation`, `department`, `employeeId`, and helper properties (`isTeacher`, `scholasticBadge`) to `UserProfile.kt`.
+   - Update `AuthRepository.kt` to persist role and teacher attributes during registration.
+   - Update `AdminRepository.kt` to support role and teacher attributes when creating/editing users.
+
+4. **Step 4: Auth Gateway & Registration Screen**
+   - Add **Student** vs **Teacher** role selection to `AuthGatewayScreen.kt`.
+   - Dynamically adjust profile inputs based on the selected role.
+   - Update branding text and logo to **DAV InfoExchange**.
+
+5. **Step 5: Profile Setup & Editor Dialogs**
+   - Update `OptionalProfileSetupSheet.kt` and `ProfileEditorDialog.kt` to present teacher fields (Department, Employee ID, Designation) when `role == "TEACHER"`, or student fields (Grade, Section) when `role == "STUDENT"`.
+
+6. **Step 6: Chat List, Chat Item, & Directory Integration**
+   - Display `[ FACULTY ✓ ]` verified badge beside Teacher names in `ChatItemRow.kt`, `ChatListScreen.kt`, and `ActiveContactsRow`.
+   - Add role filter or distinction in `ContactsTabContent.kt`.
+
+7. **Step 7: Admin Portal & Quarantined Enclave Updates**
+   - Add role selector (Student/Teacher) to `AddUserDialog` in `AdminPortalScreen.kt`.
+   - Show and allow updating role attributes in `QuarantinedAccountSheet.kt`.
+
+8. **Step 8: Verification & Compilation**
+   - Execute `compile_applet` to confirm zero compilation errors.
+   - Verify proper responsive layout, edge-to-edge padding, and test tags.

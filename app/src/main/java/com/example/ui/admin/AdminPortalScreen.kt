@@ -29,6 +29,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -41,6 +42,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
@@ -358,11 +360,23 @@ fun AdminPortalScreen(
     if (showAddUserDialog) {
         AddUserDialog(
             onDismiss = { showAddUserDialog = false },
-            onConfirm = { name, customId, ip ->
+            onConfirm = { name, customId, ip, role, grade, section, subject, department, employeeId, designation ->
                 coroutineScope.launch {
-                    val res = adminRepository.createUser(name, customId, ip)
+                    val res = adminRepository.createUser(
+                        displayName = name,
+                        customUserId = customId,
+                        initialIp = ip,
+                        role = role,
+                        grade = grade,
+                        section = section,
+                        subject = subject,
+                        department = department,
+                        employeeId = employeeId,
+                        designation = designation
+                    )
                     if (res.isSuccess) {
-                        statusMessage = "Created user @$customId"
+                        val roleTag = if (role == UserProfile.ROLE_TEACHER) "Teacher" else "Student"
+                        statusMessage = "Created $roleTag account @$customId"
                         showAddUserDialog = false
                         refreshData()
                     } else {
@@ -1022,22 +1036,217 @@ private fun IpRegistryTabContent(
 @Composable
 private fun AddUserDialog(
     onDismiss: () -> Unit,
-    onConfirm: (name: String, customId: String, ip: String) -> Unit
+    onConfirm: (
+        name: String,
+        customId: String,
+        ip: String,
+        role: String,
+        grade: String,
+        section: String,
+        subject: String,
+        department: String,
+        employeeId: String,
+        designation: String
+    ) -> Unit
 ) {
+    var selectedRole by remember { mutableStateOf(UserProfile.ROLE_STUDENT) }
     var name by remember { mutableStateOf("") }
     var customId by remember { mutableStateOf("") }
     var ip by remember { mutableStateOf("") }
 
+    // Student fields
+    var grade by remember { mutableStateOf("") }
+    var section by remember { mutableStateOf("") }
+    var subject by remember { mutableStateOf("") }
+
+    // Teacher fields
+    var department by remember { mutableStateOf("") }
+    var employeeId by remember { mutableStateOf("") }
+    var designation by remember { mutableStateOf("") }
+
+    val isTeacher = selectedRole == UserProfile.ROLE_TEACHER
+
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = AdminSurface,
-        title = { Text("Add New User Account", color = AdminAmber, fontWeight = FontWeight.Bold) },
+        title = {
+            Text(
+                text = "Add Institutional User",
+                color = AdminAmber,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp
+            )
+        },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = "SELECT INSTITUTIONAL ROLE",
+                    color = VhoqxethTextMuted,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.5.sp
+                )
+
+                // Role Selector: Student vs Teacher
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val isStudentSel = selectedRole == UserProfile.ROLE_STUDENT
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isStudentSel) AdminAmber.copy(alpha = 0.2f) else AdminCardBg)
+                            .border(
+                                width = if (isStudentSel) 1.5.dp else 1.dp,
+                                color = if (isStudentSel) AdminAmber else AdminBorder,
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .clickable { selectedRole = UserProfile.ROLE_STUDENT }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Badge,
+                                contentDescription = "Student",
+                                tint = if (isStudentSel) AdminAmber else VhoqxethTextMuted,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Student",
+                                color = if (isStudentSel) AdminAmber else VhoqxethTextSecondary,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    val isTeacherSel = selectedRole == UserProfile.ROLE_TEACHER
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isTeacherSel) VhoqxethCyanAccent.copy(alpha = 0.2f) else AdminCardBg)
+                            .border(
+                                width = if (isTeacherSel) 1.5.dp else 1.dp,
+                                color = if (isTeacherSel) VhoqxethCyanAccent else AdminBorder,
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .clickable { selectedRole = UserProfile.ROLE_TEACHER }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Verified,
+                                contentDescription = "Teacher",
+                                tint = if (isTeacherSel) VhoqxethCyanAccent else VhoqxethTextMuted,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Teacher",
+                                color = if (isTeacherSel) VhoqxethCyanAccent else VhoqxethTextSecondary,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = AdminBorder, thickness = 0.5.dp)
+
+                // Role-specific fields
+                if (isTeacher) {
+                    OutlinedTextField(
+                        value = department,
+                        onValueChange = { department = it },
+                        label = { Text("Department / Subject Area") },
+                        placeholder = { Text("e.g. Mathematics, Physics") },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = VhoqxethTextPrimary,
+                            unfocusedTextColor = VhoqxethTextPrimary
+                        )
+                    )
+                    OutlinedTextField(
+                        value = designation,
+                        onValueChange = { designation = it },
+                        label = { Text("Designation") },
+                        placeholder = { Text("e.g. Senior PGT, Lecturer") },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = VhoqxethTextPrimary,
+                            unfocusedTextColor = VhoqxethTextPrimary
+                        )
+                    )
+                    OutlinedTextField(
+                        value = employeeId,
+                        onValueChange = { employeeId = it },
+                        label = { Text("Employee ID") },
+                        placeholder = { Text("e.g. DAV-FAC-204") },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = VhoqxethTextPrimary,
+                            unfocusedTextColor = VhoqxethTextPrimary
+                        )
+                    )
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = grade,
+                            onValueChange = { grade = it },
+                            label = { Text("Grade / Class") },
+                            placeholder = { Text("10, 11, 12") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = VhoqxethTextPrimary,
+                                unfocusedTextColor = VhoqxethTextPrimary
+                            )
+                        )
+                        OutlinedTextField(
+                            value = section,
+                            onValueChange = { section = it },
+                            label = { Text("Section") },
+                            placeholder = { Text("A, B, C") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = VhoqxethTextPrimary,
+                                unfocusedTextColor = VhoqxethTextPrimary
+                            )
+                        )
+                    }
+                    OutlinedTextField(
+                        value = subject,
+                        onValueChange = { subject = it },
+                        label = { Text("Subject Specialization (optional)") },
+                        placeholder = { Text("e.g. Science, Commerce, Arts") },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = VhoqxethTextPrimary,
+                            unfocusedTextColor = VhoqxethTextPrimary
+                        )
+                    )
+                }
+
+                HorizontalDivider(color = AdminBorder, thickness = 0.5.dp)
+
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
                     label = { Text("Display Name") },
+                    placeholder = { Text(if (isTeacher) "e.g. Dr. Rajesh Sharma" else "e.g. Rahul Verma") },
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = VhoqxethTextPrimary,
@@ -1068,11 +1277,30 @@ private fun AddUserDialog(
         },
         confirmButton = {
             Button(
-                onClick = { onConfirm(name, customId, ip) },
+                onClick = {
+                    onConfirm(
+                        name,
+                        customId,
+                        ip,
+                        selectedRole,
+                        grade,
+                        section,
+                        subject,
+                        department,
+                        employeeId,
+                        designation
+                    )
+                },
                 enabled = name.isNotBlank() && customId.isNotBlank(),
-                colors = ButtonDefaults.buttonColors(containerColor = AdminAmber)
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isTeacher) VhoqxethCyanAccent else AdminAmber
+                )
             ) {
-                Text("Create User", color = Color.Black, fontWeight = FontWeight.Bold)
+                Text(
+                    text = if (isTeacher) "Create Faculty User" else "Create Student User",
+                    color = Color.Black,
+                    fontWeight = FontWeight.Bold
+                )
             }
         },
         dismissButton = {

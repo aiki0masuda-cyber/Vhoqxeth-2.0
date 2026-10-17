@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "Vhoqxeth"
+rootProject.name = "DAV InfoExchange"
 
 include(":app")

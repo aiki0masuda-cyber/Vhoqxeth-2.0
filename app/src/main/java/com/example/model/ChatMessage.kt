@@ -9,6 +9,10 @@ data class ChatMessage(
     val threadId: String = "",
     val senderId: String = "",
     val senderName: String = "",
+    val senderRole: String = "STUDENT",       // "STUDENT" or "TEACHER"
     val content: String = "",
     val timestamp: String = ""
-)
+) {
+    val isFaculty: Boolean
+        get() = senderRole.equals("TEACHER", ignoreCase = true)
+}

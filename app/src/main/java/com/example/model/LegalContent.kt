@@ -47,34 +47,34 @@ object LegalContent {
     val privacyPolicySections = listOf(
         LegalSection(
             title = "1. Zero-Knowledge Architecture",
-            content = "Vhoqxeth does not collect personal identifiers, phone numbers, email addresses, contact books, or location telemetry. Your presence on the mesh exists purely through your chosen custom handle and active network endpoint."
+            content = "DAV InfoExchange does not sell personal data, phone numbers, contact books, or commercial tracking telemetry. Your presence exists purely through your chosen scholastic handle, academic section, and secure network credentials."
         ),
         LegalSection(
             title = "2. Device IP Routing",
-            content = "Your device IP is utilized strictly for packet delivery and endpoint recognition in the distributed database. IP addresses are sanitized into route identifiers and can be unlinked at any time via your device profile."
+            content = "Your device IP is utilized strictly for packet delivery and endpoint recognition in the distributed exchange. IP addresses are sanitized into route identifiers and can be unlinked at any time via your device profile."
         ),
         LegalSection(
             title = "3. End-to-End Encryption",
-            content = "All conversation threads and message payloads are encrypted prior to leaving your device. Cloud coordinators and relays act only as blind transport mechanisms and cannot decrypt your data."
+            content = "All conversation threads and study circle payloads are encrypted prior to leaving your device. Cloud coordinators and relays act only as blind transport mechanisms and cannot decrypt your data."
         ),
         LegalSection(
             title = "4. Data Retention & Erasure",
-            content = "Signing out or resetting your account clears all local session keys immediately. You retain the right to terminate your network identity and purge linked routing entries at any time."
+            content = "Signing out or resetting your account clears all local session keys immediately. You retain the right to terminate your scholastic identity and purge linked routing entries at any time."
         )
     )
 
     val termsAndConditionsSections = listOf(
         LegalSection(
             title = "1. Acceptance of Protocol Rules",
-            content = "By establishing a connection to the Vhoqxeth network, you agree to adhere to decentralized communication standards and comply with all applicable local telecommunication laws."
+            content = "By establishing a connection to the DAV InfoExchange network, you agree to adhere to academic scholastic standards, respect fellow peers, and comply with all applicable DAV College Managing Committee guidelines."
         ),
         LegalSection(
             title = "2. Network Integrity & Non-Abuse",
-            content = "Users must not engage in distributed denial-of-service (DDoS) attacks, automated packet flooding, protocol exploitation, or unauthorized impersonation of other network handles."
+            content = "Users must not engage in distributed denial-of-service (DDoS) attacks, automated packet flooding, protocol exploitation, or unauthorized impersonation of other scholastic handles."
         ),
         LegalSection(
             title = "3. Client Security Responsibility",
-            content = "Security of the communication endpoint depends on physical and software protection of your Android device. Vhoqxeth cannot prevent compromise if the underlying operating system is untrusted or compromised."
+            content = "Security of the communication endpoint depends on physical and software protection of your Android device. DAV InfoExchange cannot prevent compromise if the underlying operating system is untrusted or compromised."
         ),
         LegalSection(
             title = "4. Protocol Upgrades & Service Continuity",

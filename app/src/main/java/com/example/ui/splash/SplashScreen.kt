@@ -118,7 +118,7 @@ fun SplashScreen(
             targetValue = 1.0f,
             animationSpec = tween(500, easing = LinearEasing)
         )
-        statusText = "Vhoqxeth Ready"
+        statusText = "DAV InfoExchange Ready"
         delay(300)
         onSplashFinished()
     }
@@ -181,63 +181,71 @@ fun SplashScreen(
                 // Circular clipping with logo image
                 Box(
                     modifier = Modifier
-                        .size(130.dp)
+                        .size(136.dp)
                         .scale(pulseScale)
-                        .clip(CircleShape)
-                        .background(Color(0xFF0E0E18)),
+                        .clip(RoundedCornerShape(32.dp))
+                        .background(Color.White)
+                        .border(1.5.dp, Color(0xFF1E2A78), RoundedCornerShape(32.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     Image(
-                        painter = painterResource(id = R.drawable.ic_vhoqxeth_logo),
-                        contentDescription = "Vhoqxeth Logo",
+                        painter = painterResource(id = R.drawable.ic_dav_official),
+                        contentDescription = "DAV College Managing Committee Crest",
                         modifier = Modifier
-                            .size(130.dp)
+                            .size(126.dp)
                             .testTag("splash_logo_image")
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(26.dp))
 
-            // App Name: Vhoqxeth
+            // App Name: DAV InfoExchange
             Text(
-                text = "Vhoqxeth",
+                text = "DAV InfoExchange",
                 color = VhoqxethTextPrimary,
-                fontSize = 38.sp,
+                fontSize = 32.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.SansSerif,
-                letterSpacing = 2.sp,
+                letterSpacing = 1.sp,
                 modifier = Modifier.testTag("splash_app_title")
             )
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "SCHOLASTIC COMMUNICATION NETWORK",
+                color = VhoqxethCyanAccent,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 2.sp
+            )
 
-            // Encrypted tag
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Institutional school tag
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFF1E1B38))
-                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF1E2840))
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.Lock,
-                    contentDescription = "Encrypted",
+                    contentDescription = "Scholastic Protocol",
                     tint = VhoqxethCyanAccent,
                     modifier = Modifier.size(12.dp)
                 )
                 Spacer(modifier = Modifier.size(6.dp))
                 Text(
-                    text = "QUANTUM ENCRYPTED MESH",
-                    color = VhoqxethCyanBright,
-                    fontSize = 11.sp,
+                    text = "DAV COLLEGE MANAGING COMMITTEE • ESTD 1886",
+                    color = VhoqxethTextSecondary,
+                    fontSize = 10.sp,
                     fontWeight = FontWeight.SemiBold,
                     letterSpacing = 1.sp
-                )
             }
 
-            Spacer(modifier = Modifier.height(48.dp))
+            Spacer(modifier = Modifier.height(44.dp))
 
             // Animated Linear Progress
             Column(

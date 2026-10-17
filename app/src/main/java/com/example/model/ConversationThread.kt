@@ -33,6 +33,8 @@ data class ConversationThread(
     val isPinned: Boolean = false,
     val isMuted: Boolean = false,
     val isVerified: Boolean = false,
+    val isFaculty: Boolean = false,
+    val scholasticBadge: String = "",
     val isGroup: Boolean = false,
     val category: ConversationCategory = ConversationCategory.DIRECT,
     val avatarInitials: String = "",
@@ -50,6 +52,8 @@ data class ActiveContact(
     val name: String = "",
     val initials: String = "",
     val isOnline: Boolean = false,
+    val isFaculty: Boolean = false,
+    val scholasticBadge: String = "",
     val hasStory: Boolean = false,
     val colorStart: Long = 0xFF4F46E5,
     val colorEnd: Long = 0xFF2563EB

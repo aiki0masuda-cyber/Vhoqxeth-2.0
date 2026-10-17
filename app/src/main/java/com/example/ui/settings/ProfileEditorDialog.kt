@@ -12,17 +12,20 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Cake
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -67,6 +70,13 @@ fun ProfileEditorDialog(
 ) {
     val coroutineScope = rememberCoroutineScope()
     var displayName by remember { mutableStateOf(currentUser.displayName) }
+    var role by remember { mutableStateOf(if (currentUser.isTeacher) UserProfile.ROLE_TEACHER else UserProfile.ROLE_STUDENT) }
+    var grade by remember { mutableStateOf(currentUser.grade) }
+    var section by remember { mutableStateOf(currentUser.section) }
+    var subject by remember { mutableStateOf(currentUser.subject) }
+    var department by remember { mutableStateOf(currentUser.department) }
+    var employeeId by remember { mutableStateOf(currentUser.employeeId) }
+    var designation by remember { mutableStateOf(currentUser.designation) }
     var firstName by remember { mutableStateOf(currentUser.firstName) }
     var lastName by remember { mutableStateOf(currentUser.lastName) }
     var dateOfBirth by remember { mutableStateOf(currentUser.dateOfBirth) }
@@ -103,7 +113,7 @@ fun ProfileEditorDialog(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "IDENTITY MANAGEMENT",
+                        text = "IDENTITY & SCHOLASTIC ROLE",
                         color = VhoqxethIndigo600,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -151,6 +161,154 @@ fun ProfileEditorDialog(
                                 fontWeight = FontWeight.SemiBold
                             )
                         }
+                    }
+                }
+
+                // Institutional Role Toggle (Student vs Teacher)
+                Text(
+                    text = "ACADEMIC ROLE",
+                    color = VhoqxethTextMuted,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.5.sp
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val isStudent = role == UserProfile.ROLE_STUDENT
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isStudent) VhoqxethIndigo600.copy(alpha = 0.15f) else Color(0xFFF8FAFC))
+                            .border(
+                                width = if (isStudent) 1.5.dp else 1.dp,
+                                color = if (isStudent) VhoqxethIndigo600 else VhoqxethBorder,
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .clickable { role = UserProfile.ROLE_STUDENT }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Badge,
+                                contentDescription = null,
+                                tint = if (isStudent) VhoqxethIndigo600 else VhoqxethTextMuted,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Student",
+                                color = if (isStudent) VhoqxethIndigo600 else VhoqxethSlate900,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    val isTeacher = role == UserProfile.ROLE_TEACHER
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isTeacher) VhoqxethIndigo600.copy(alpha = 0.15f) else Color(0xFFF8FAFC))
+                            .border(
+                                width = if (isTeacher) 1.5.dp else 1.dp,
+                                color = if (isTeacher) VhoqxethIndigo600 else VhoqxethBorder,
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .clickable { role = UserProfile.ROLE_TEACHER }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Verified,
+                                contentDescription = null,
+                                tint = if (isTeacher) VhoqxethIndigo600 else VhoqxethTextMuted,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Teacher",
+                                color = if (isTeacher) VhoqxethIndigo600 else VhoqxethSlate900,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
+                // Role specific input fields
+                if (role == UserProfile.ROLE_STUDENT) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = grade,
+                            onValueChange = { grade = it },
+                            label = { Text("Grade / Class") },
+                            placeholder = { Text("e.g. 10") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.weight(1f)
+                        )
+                        OutlinedTextField(
+                            value = section,
+                            onValueChange = { section = it },
+                            label = { Text("Section") },
+                            placeholder = { Text("e.g. A") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    OutlinedTextField(
+                        value = subject,
+                        onValueChange = { subject = it },
+                        label = { Text("Subject Specialization") },
+                        placeholder = { Text("e.g. Science, Mathematics") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                } else {
+                    OutlinedTextField(
+                        value = department,
+                        onValueChange = { department = it },
+                        label = { Text("Subject / Department") },
+                        placeholder = { Text("e.g. Mathematics & Computing") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = designation,
+                            onValueChange = { designation = it },
+                            label = { Text("Designation") },
+                            placeholder = { Text("e.g. Senior PGT") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.weight(1f)
+                        )
+                        OutlinedTextField(
+                            value = employeeId,
+                            onValueChange = { employeeId = it },
+                            label = { Text("Employee ID") },
+                            placeholder = { Text("e.g. DAV-FAC-204") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.weight(1f)
+                        )
                     }
                 }
 
@@ -315,7 +473,14 @@ fun ProfileEditorDialog(
                             firstName = firstName.trim(),
                             lastName = lastName.trim(),
                             dateOfBirth = dateOfBirth.trim(),
-                            description = description.trim()
+                            description = description.trim(),
+                            role = role,
+                            grade = grade.trim(),
+                            section = section.trim(),
+                            subject = subject.trim(),
+                            department = department.trim(),
+                            employeeId = employeeId.trim(),
+                            designation = designation.trim()
                         )
                         isSaving = false
                         if (res.isSuccess) {

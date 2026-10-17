@@ -45,7 +45,7 @@ class FirestoreConnectionManager(private val context: Context) {
             val probePayload = hashMapOf<String, Any>(
                 "status" to "CONNECTED",
                 "databaseId" to databaseId,
-                "clientApp" to "Vhoqxeth Android",
+                "clientApp" to "DAV InfoExchange",
                 "timestamp" to currentTimeStr
             )
 

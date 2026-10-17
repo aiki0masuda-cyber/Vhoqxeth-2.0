@@ -43,7 +43,14 @@ class AdminRepository(
     suspend fun createUser(
         displayName: String,
         customUserId: String,
-        initialIp: String
+        initialIp: String,
+        role: String = UserProfile.ROLE_STUDENT,
+        grade: String = "",
+        section: String = "",
+        subject: String = "",
+        department: String = "",
+        employeeId: String = "",
+        designation: String = ""
     ): Result<UserProfile> = withContext(Dispatchers.IO) {
         try {
             val handle = customUserId.trim().removePrefix("@")
@@ -62,6 +69,13 @@ class AdminRepository(
                 userId = handle,
                 displayName = displayName.trim().ifBlank { handle },
                 customUserId = handle,
+                role = if (role.equals(UserProfile.ROLE_TEACHER, ignoreCase = true)) UserProfile.ROLE_TEACHER else UserProfile.ROLE_STUDENT,
+                grade = grade.trim(),
+                section = section.trim(),
+                subject = subject.trim(),
+                department = department.trim(),
+                employeeId = employeeId.trim(),
+                designation = designation.trim(),
                 associatedIps = ipList,
                 currentIp = initialIp.trim(),
                 createdAt = now
@@ -73,6 +87,13 @@ class AdminRepository(
                     "userId" to handle,
                     "displayName" to newProfile.displayName,
                     "customUserId" to handle,
+                    "role" to newProfile.role,
+                    "grade" to newProfile.grade,
+                    "section" to newProfile.section,
+                    "subject" to newProfile.subject,
+                    "department" to newProfile.department,
+                    "employeeId" to newProfile.employeeId,
+                    "designation" to newProfile.designation,
                     "associatedIps" to ipList,
                     "currentIp" to newProfile.currentIp,
                     "createdAt" to now
@@ -112,6 +133,20 @@ class AdminRepository(
                 "userId" to newHandle,
                 "displayName" to updatedProfile.displayName.trim().ifBlank { newHandle },
                 "customUserId" to newHandle,
+                "role" to updatedProfile.role,
+                "grade" to updatedProfile.grade,
+                "section" to updatedProfile.section,
+                "subject" to updatedProfile.subject,
+                "department" to updatedProfile.department,
+                "employeeId" to updatedProfile.employeeId,
+                "designation" to updatedProfile.designation,
+                "passwordHash" to updatedProfile.passwordHash,
+                "passwordSalt" to updatedProfile.passwordSalt,
+                "firstName" to updatedProfile.firstName,
+                "lastName" to updatedProfile.lastName,
+                "dateOfBirth" to updatedProfile.dateOfBirth,
+                "description" to updatedProfile.description,
+                "hasCompletedOptionalSetup" to updatedProfile.hasCompletedOptionalSetup,
                 "associatedIps" to updatedProfile.associatedIps,
                 "currentIp" to updatedProfile.currentIp,
                 "createdAt" to updatedProfile.createdAt.ifBlank { getCurrentIsoTimestamp() }
@@ -282,8 +317,8 @@ class AdminRepository(
             db.collection("connection_probes").document(probeId).set(
                 mapOf(
                     "status" to "ACTIVE_ADMIN_PROBE",
-                    "databaseId" to "vhoqxeth-main",
-                    "clientApp" to "Vhoqxeth Master Console",
+                    "databaseId" to "dav-infoexchange-main",
+                    "clientApp" to "DAV InfoExchange Master Console",
                     "timestamp" to now
                 )
             ).await()

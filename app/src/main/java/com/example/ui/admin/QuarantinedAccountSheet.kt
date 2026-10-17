@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -250,11 +251,11 @@ fun QuarantinedAccountSheet(
                     )
                 }
             ) {
-                val tabTitles = listOf("Messages", "Contacts", "Identity", "Audit")
+                val tabTitles = listOf("Messages", "Contacts", "Settings", "Audit")
                 val tabIcons = listOf(
                     Icons.AutoMirrored.Filled.Chat,
                     Icons.Default.People,
-                    Icons.Default.Lock,
+                    Icons.Default.Settings,
                     Icons.Default.History
                 )
 

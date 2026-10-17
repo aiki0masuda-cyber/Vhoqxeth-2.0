@@ -129,13 +129,46 @@ fun ChatItemRow(
                     modifier = Modifier.weight(1f, fill = false)
                 )
 
-                if (thread.isVerified) {
+                if (thread.isFaculty) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(VhoqxethCyanAccent.copy(alpha = 0.15f))
+                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "FACULTY",
+                                color = VhoqxethCyanAccent,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.5.sp
+                            )
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Icon(
+                                imageVector = Icons.Default.Verified,
+                                contentDescription = "Verified Faculty",
+                                tint = VhoqxethCyanAccent,
+                                modifier = Modifier.size(11.dp)
+                            )
+                        }
+                    }
+                } else if (thread.isVerified) {
                     Spacer(modifier = Modifier.width(4.dp))
                     Icon(
                         imageVector = Icons.Default.Verified,
                         contentDescription = "Verified",
                         tint = VhoqxethCyanAccent,
                         modifier = Modifier.size(16.dp)
+                    )
+                } else if (thread.scholasticBadge.isNotBlank()) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = thread.scholasticBadge,
+                        color = VhoqxethTextMuted,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium
                     )
                 }
 

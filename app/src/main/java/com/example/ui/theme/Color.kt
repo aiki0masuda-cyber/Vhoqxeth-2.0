@@ -3,56 +3,53 @@ package com.example.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // ============================================================================
-// Clean & Readable Palette (Crisp White Canvas, Warm-Gray Cards, Deep Indigo)
+// DAV Cheeka InfoExchange — Minimalist Precision Slate & Monochrome Theme
 // ============================================================================
 
-// Canvas & Surfaces (Light Theme First)
-val VhoqxethCanvasLight = Color(0xFFF8FAFC)          // Clean slate-50 background canvas
-val VhoqxethCardLight = Color(0xFFFFFFFF)            // Crisp pure white elevated cards
-val VhoqxethCardLightAlt = Color(0xFFF1F5F9)         // Soft warm slate-100 card highlight
-val VhoqxethCardLightHover = Color(0xFFE2E8F0)       // Interactive slate-200 state
-val VhoqxethBorderLight = Color(0xFFE2E8F0)          // Clean slate-200 subtle border
-val VhoqxethBorderLightStrong = Color(0xFFCBD5E1)    // Slate-300 prominent border
+// Canvas & Deep Slate Backgrounds
+val DavCanvasDark = Color(0xFF0A0F1D)           // Deepest scholastic slate background
+val DavSurfaceCard = Color(0xFF131D31)          // Focused precision card surface
+val DavSurfaceElevated = Color(0xFF1C2840)      // Elevated interactive slate card
+val DavSurfaceHover = Color(0xFF243352)         // Active/pressed surface
+val DavBorder = Color(0xFF28395A)               // Sharp precision border (1.dp)
+val DavBorderSubtle = Color(0xFF1E2C46)         // Subtle divider
 
-// Accents (Deep Indigo & Crisp Cobalt - zero neon glow)
-val VhoqxethIndigo600 = Color(0xFF4F46E5)            // Primary brand deep indigo
-val VhoqxethIndigo500 = Color(0xFF6366F1)            // Indigo lighter accent
-val VhoqxethIndigo700 = Color(0xFF4338CA)            // Indigo deeper accent
-val VhoqxethCobalt600 = Color(0xFF2563EB)            // Secondary crisp cobalt blue
-val VhoqxethCobalt500 = Color(0xFF3B82F6)            // Secondary cobalt light
-val VhoqxethRose600 = Color(0xFFE11D48)              // Clean rose accent (replacing neon magenta)
+// Crisp High-Contrast Typography
+val DavTextPrimary = Color(0xFFF8FAFC)          // Crisp pure white/slate-50
+val DavTextSecondary = Color(0xFF94A3B8)        // Neutral cool slate-400
+val DavTextMuted = Color(0xFF64748B)            // Muted caption slate-500
 
-// High-Contrast Readable Typography
-val VhoqxethSlate900 = Color(0xFF0F172A)             // Primary high-contrast text
-val VhoqxethSlate600 = Color(0xFF475569)             // Secondary readable text
-val VhoqxethSlate500 = Color(0xFF64748B)             // Muted / caption text
-val VhoqxethSlate400 = Color(0xFF94A3B8)             // Subtle placeholder text
-
-// Functional Status Indicators
-val VhoqxethEmerald500 = Color(0xFF10B981)           // Active / online status
-val VhoqxethRed500 = Color(0xFFEF4444)               // Error / delete status
-val VhoqxethAmber500 = Color(0xFFF59E0B)             // Warning status
+// Precision Accents (Sky Blue, Pure Monochrome, Scholastic Gold)
+val DavAccentSky = Color(0xFF38BDF8)            // Sky 400 precision active indicator
+val DavAccentIndigo = Color(0xFF6366F1)         // Scholastic indigo brand accent
+val DavAccentGold = Color(0xFFF59E0B)           // Institutional DAV crest gold
+val DavAccentEmerald = Color(0xFF10B981)        // Live connection green
+val DavAccentCrimson = Color(0xFFEF4444)        // Administrative alert crimson
 
 // ============================================================================
-// App-Wide Semantic Tokens (Clean Light Defaults)
+// Semantic Compatibility Tokens (Theme Continuity)
 // ============================================================================
-val VhoqxethDarkBg = VhoqxethCanvasLight             // Clean canvas background
-val VhoqxethSurface = VhoqxethCardLight              // Clean white card surface
-val VhoqxethSurfaceElevated = VhoqxethCardLightAlt   // Soft warm-gray elevated surface
-val VhoqxethSurfaceHighlight = VhoqxethCardLightHover// Subtle highlight surface
-val VhoqxethBorder = VhoqxethBorderLight             // Clean 1.dp border
-val VhoqxethDeepBlack = VhoqxethSlate900             // High-contrast slate
+val VhoqxethDarkBg = DavCanvasDark
+val VhoqxethSurface = DavSurfaceCard
+val VhoqxethSurfaceElevated = DavSurfaceElevated
+val VhoqxethSurfaceHighlight = DavSurfaceHover
+val VhoqxethBorder = DavBorder
+val VhoqxethBorderLightStrong = DavBorder
+val VhoqxethDeepBlack = DavCanvasDark
 
-val VhoqxethPrimaryViolet = VhoqxethIndigo600        // Clean Deep Indigo
-val VhoqxethPrimaryVioletBright = VhoqxethIndigo500  // Indigo 500
-val VhoqxethPrimaryVioletGlow = VhoqxethIndigo700    // Deep Indigo
-val VhoqxethCyanAccent = VhoqxethCobalt600           // Crisp Cobalt
-val VhoqxethCyanBright = VhoqxethCobalt500           // Cobalt 500
-val VhoqxethNeonMagenta = VhoqxethRose600            // Clean Rose 600
+val VhoqxethPrimaryViolet = DavAccentIndigo
+val VhoqxethPrimaryVioletBright = DavAccentSky
+val VhoqxethPrimaryVioletGlow = DavAccentIndigo
+val VhoqxethCyanAccent = DavAccentSky
+val VhoqxethCyanBright = Color(0xFF7DD3FC)
+val VhoqxethNeonMagenta = DavAccentGold
+val VhoqxethIndigo600 = DavAccentIndigo
 
-val VhoqxethTextPrimary = VhoqxethSlate900           // Deep Slate 900
-val VhoqxethTextSecondary = VhoqxethSlate600         // Slate 600
-val VhoqxethTextMuted = VhoqxethSlate500             // Slate 500
+val VhoqxethTextPrimary = DavTextPrimary
+val VhoqxethTextSecondary = DavTextSecondary
+val VhoqxethTextMuted = DavTextMuted
 
-val VhoqxethOnlineGreen = VhoqxethEmerald500         // Emerald online pill
-val VhoqxethUnreadBadge = VhoqxethIndigo600          // Deep Indigo badge
+val VhoqxethOnlineGreen = DavAccentEmerald
+val VhoqxethUnreadBadge = DavAccentSky
+val VhoqxethSlate900 = DavCanvasDark
+val VhoqxethSlate600 = DavTextSecondary

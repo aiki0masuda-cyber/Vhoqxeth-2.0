@@ -138,10 +138,33 @@ class MeshChatRepository(
                         val lastSenderName = doc.getString("lastSenderName") ?: ""
                         val updatedAt = doc.getString("updatedAt") ?: ""
 
-                        // Identify the peer handle
-                        val peerHandle = participants.firstOrNull { it != sanitized } ?: sanitized
-                        val displayName = peerHandle.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.US) else it.toString() }
-                        val initials = peerHandle.take(2).uppercase().ifBlank { "VQ" }
+                        val isGroup = doc.getBoolean("isGroup") == true || doc.getString("category") == "GROUP"
+                        val groupName = doc.getString("groupName")
+                        val rawCategory = doc.getString("category") ?: if (isGroup) "GROUP" else "DIRECT"
+                        val category = when (rawCategory) {
+                            "GROUP" -> ConversationCategory.GROUP
+                            "CHANNEL" -> ConversationCategory.CHANNEL
+                            else -> ConversationCategory.DIRECT
+                        }
+
+                        // Determine display name and initials
+                        val displayName: String
+                        val initials: String
+                        val colorStart: Long
+                        val colorEnd: Long
+
+                        if (isGroup && !groupName.isNullOrBlank()) {
+                            displayName = groupName
+                            initials = groupName.take(2).uppercase().ifBlank { "SC" }
+                            colorStart = 0xFF0284C7
+                            colorEnd = 0xFF38BDF8
+                        } else {
+                            val peerHandle = participants.firstOrNull { it != sanitized } ?: sanitized
+                            displayName = peerHandle.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.US) else it.toString() }
+                            initials = displayName.take(2).uppercase().ifBlank { "DC" }
+                            colorStart = 0xFF4F46E5
+                            colorEnd = 0xFF2563EB
+                        }
 
                         ConversationThread(
                             id = threadId,
@@ -153,11 +176,11 @@ class MeshChatRepository(
                             isPinned = false,
                             isMuted = false,
                             isVerified = true,
-                            isGroup = false,
-                            category = ConversationCategory.DIRECT,
+                            isGroup = isGroup,
+                            category = category,
                             avatarInitials = initials,
-                            avatarColorStart = 0xFF4F46E5,
-                            avatarColorEnd = 0xFF2563EB,
+                            avatarColorStart = colorStart,
+                            avatarColorEnd = colorEnd,
                             lastSenderName = lastSenderName,
                             lastSenderId = lastSenderId,
                             participantIds = participants,
@@ -381,6 +404,7 @@ class MeshChatRepository(
                 "threadId" to threadId,
                 "senderId" to senderHandle,
                 "senderName" to senderProfile.displayName,
+                "senderRole" to if (senderProfile.isTeacher) UserProfile.ROLE_TEACHER else UserProfile.ROLE_STUDENT,
                 "content" to trimmed,
                 "timestamp" to now
             )
@@ -407,6 +431,7 @@ class MeshChatRepository(
                 threadId = threadId,
                 senderId = senderHandle,
                 senderName = senderProfile.displayName,
+                senderRole = if (senderProfile.isTeacher) UserProfile.ROLE_TEACHER else UserProfile.ROLE_STUDENT,
                 content = trimmed,
                 timestamp = now
             )
@@ -469,6 +494,87 @@ class MeshChatRepository(
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(tag, "Failed to remove contact: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Creates a new collaborative Class Study Circle in Firestore.
+     */
+    suspend fun createStudyCircle(
+        creator: UserProfile,
+        circleName: String,
+        grade: String,
+        section: String,
+        subject: String,
+        description: String,
+        initialMembers: List<String> = emptyList()
+    ): Result<ConversationThread> = withContext(Dispatchers.IO) {
+        try {
+            val creatorHandle = creator.customUserId.trim().removePrefix("@").lowercase()
+            val now = getCurrentIsoTimestamp()
+            val threadId = "circle_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}"
+
+            val members = (listOf(creatorHandle) + initialMembers.map { it.trim().removePrefix("@").lowercase() })
+                .filter { it.isNotBlank() }
+                .distinct()
+
+            val initialMessage = if (description.isNotBlank()) description.trim() else "Study circle initialized for ${if (grade.isNotBlank()) "Class $grade" else "collaborative studies"}"
+
+            val threadPayload = mapOf(
+                "threadId" to threadId,
+                "groupName" to circleName.trim(),
+                "grade" to grade.trim(),
+                "section" to section.trim(),
+                "subject" to subject.trim(),
+                "isGroup" to true,
+                "category" to "GROUP",
+                "participantIds" to members,
+                "lastMessage" to initialMessage,
+                "lastSenderId" to creatorHandle,
+                "lastSenderName" to creator.displayName.ifBlank { creatorHandle },
+                "updatedAt" to now,
+                "createdAt" to now
+            )
+
+            db.collection("threads").document(threadId).set(threadPayload).await()
+
+            // Handshake message
+            val msgId = "msg_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}"
+            val msgPayload = mapOf(
+                "messageId" to msgId,
+                "threadId" to threadId,
+                "senderId" to creatorHandle,
+                "senderName" to creator.displayName.ifBlank { creatorHandle },
+                "content" to "Welcome to $circleName! Collaborative study exchange established.",
+                "timestamp" to now
+            )
+            db.collection("threads").document(threadId).collection("messages").document(msgId).set(msgPayload).await()
+
+            val created = ConversationThread(
+                id = threadId,
+                name = circleName.trim(),
+                lastMessage = initialMessage,
+                timestamp = "Now",
+                unreadCount = 0,
+                isOnline = true,
+                isPinned = false,
+                isMuted = false,
+                isVerified = true,
+                isGroup = true,
+                category = ConversationCategory.GROUP,
+                avatarInitials = circleName.take(2).uppercase().ifBlank { "SC" },
+                avatarColorStart = 0xFF0284C7,
+                avatarColorEnd = 0xFF38BDF8,
+                lastSenderName = creator.displayName,
+                lastSenderId = creatorHandle,
+                participantIds = members,
+                messageStatus = MessageStatus.SENT,
+                snippetType = SnippetType.TEXT
+            )
+            Result.success(created)
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to create study circle: ${e.message}", e)
             Result.failure(e)
         }
     }

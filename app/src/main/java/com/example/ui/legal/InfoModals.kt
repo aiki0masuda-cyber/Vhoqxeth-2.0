@@ -105,13 +105,13 @@ fun AboutAppSheet(
                     Spacer(modifier = Modifier.width(10.dp))
                     Column {
                         Text(
-                            text = "About Vhoqxeth",
+                            text = "About DAV InfoExchange",
                             color = VhoqxethTextPrimary,
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "QUANTUM PROTOCOL SPECIFICATION",
+                            text = "DAV SCHOLASTIC COMMUNICATION NETWORK",
                             color = VhoqxethIndigo600,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.SemiBold,
@@ -137,7 +137,7 @@ fun AboutAppSheet(
             Spacer(modifier = Modifier.height(14.dp))
 
             Text(
-                text = "Vhoqxeth is a high-assurance decentralized messaging architecture designed for verifiable end-to-end privacy and zero-trust endpoint communication.",
+                text = "DAV InfoExchange is the official high-assurance communication platform for students and faculty of DAV College Managing Committee institutions (ESTD 1886).",
                 color = VhoqxethTextSecondary,
                 fontSize = 13.sp,
                 lineHeight = 18.sp,

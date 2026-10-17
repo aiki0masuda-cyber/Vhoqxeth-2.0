@@ -1,6 +1,6 @@
 {
-  "name": "Vhoqxeth",
-  "description": "A minimalist chat interface featuring a seamless splash screen transition into organized placeholder conversation threads.",
+  "name": "DAV InfoExchange",
+  "description": "Official scholastic communication exchange for DAV institutions, supporting students and faculty.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

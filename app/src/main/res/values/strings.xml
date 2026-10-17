@@ -1,3 +1,5 @@
 <resources>
-    <string name="app_name">Vhoqxeth</string>
+    <string name="app_name">DAV InfoExchange</string>
+    <string name="app_full_name">DAV InfoExchange</string>
+    <string name="institution_name">DAV College Managing Committee</string>
 </resources>

@@ -77,7 +77,14 @@ class AuthRepository(
         displayName: String,
         customUserId: String,
         password: String,
-        ip: String
+        ip: String,
+        role: String = UserProfile.ROLE_STUDENT,
+        grade: String = "",
+        section: String = "",
+        subject: String = "",
+        department: String = "",
+        employeeId: String = "",
+        designation: String = ""
     ): Result<UserProfile> = withContext(Dispatchers.IO) {
         try {
             val now = getCurrentIsoTimestamp()
@@ -108,6 +115,13 @@ class AuthRepository(
                 customUserId = sanitizedHandle,
                 passwordHash = hash,
                 passwordSalt = salt,
+                role = if (role.equals(UserProfile.ROLE_TEACHER, ignoreCase = true)) UserProfile.ROLE_TEACHER else UserProfile.ROLE_STUDENT,
+                grade = grade.trim(),
+                section = section.trim(),
+                subject = subject.trim(),
+                department = department.trim(),
+                employeeId = employeeId.trim(),
+                designation = designation.trim(),
                 firstName = "",
                 lastName = "",
                 dateOfBirth = "",
@@ -125,6 +139,13 @@ class AuthRepository(
                 "customUserId" to sanitizedHandle,
                 "passwordHash" to hash,
                 "passwordSalt" to salt,
+                "role" to newProfile.role,
+                "grade" to newProfile.grade,
+                "section" to newProfile.section,
+                "subject" to newProfile.subject,
+                "department" to newProfile.department,
+                "employeeId" to newProfile.employeeId,
+                "designation" to newProfile.designation,
                 "firstName" to "",
                 "lastName" to "",
                 "dateOfBirth" to "",
@@ -216,7 +237,14 @@ class AuthRepository(
         firstName: String,
         lastName: String,
         dateOfBirth: String,
-        description: String
+        description: String,
+        role: String? = null,
+        grade: String? = null,
+        section: String? = null,
+        subject: String? = null,
+        department: String? = null,
+        employeeId: String? = null,
+        designation: String? = null
     ): Result<UserProfile> = withContext(Dispatchers.IO) {
         try {
             val key = userId.trim().removePrefix("@")
@@ -224,11 +252,26 @@ class AuthRepository(
             val existing = userDoc.toObject(UserProfile::class.java)
                 ?: return@withContext Result.failure(IllegalArgumentException("User profile not found."))
 
+            val updatedRole = role?.trim() ?: existing.role
+            val updatedGrade = grade?.trim() ?: existing.grade
+            val updatedSection = section?.trim() ?: existing.section
+            val updatedSubject = subject?.trim() ?: existing.subject
+            val updatedDept = department?.trim() ?: existing.department
+            val updatedEmpId = employeeId?.trim() ?: existing.employeeId
+            val updatedDesig = designation?.trim() ?: existing.designation
+
             val updated = existing.copy(
                 firstName = firstName.trim(),
                 lastName = lastName.trim(),
                 dateOfBirth = dateOfBirth.trim(),
                 description = description.trim(),
+                role = updatedRole,
+                grade = updatedGrade,
+                section = updatedSection,
+                subject = updatedSubject,
+                department = updatedDept,
+                employeeId = updatedEmpId,
+                designation = updatedDesig,
                 hasCompletedOptionalSetup = true
             )
 
@@ -237,6 +280,13 @@ class AuthRepository(
                 "lastName" to updated.lastName,
                 "dateOfBirth" to updated.dateOfBirth,
                 "description" to updated.description,
+                "role" to updated.role,
+                "grade" to updated.grade,
+                "section" to updated.section,
+                "subject" to updated.subject,
+                "department" to updated.department,
+                "employeeId" to updated.employeeId,
+                "designation" to updated.designation,
                 "hasCompletedOptionalSetup" to true
             )
             db.collection("users").document(key).update(updatePayload).await()

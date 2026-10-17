@@ -31,12 +31,14 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AlternateEmail
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -210,7 +212,7 @@ fun AuthGatewayScreen(
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Vhoqxeth Mesh",
+                        text = "DAV InfoExchange",
                         color = VhoqxethTextSecondary,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -292,41 +294,39 @@ fun AuthGatewayScreen(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Branding Header
             Box(
                 modifier = Modifier
-                    .size(68.dp)
-                    .clip(CircleShape)
-                    .background(VhoqxethPrimaryViolet)
-                    .border(1.dp, VhoqxethBorder, CircleShape),
+                    .size(72.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color.White)
+                    .border(1.5.dp, Color(0xFF1E2A78), RoundedCornerShape(20.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Default.Lock,
-                    contentDescription = "Vhoqxeth Vault",
-                    tint = Color.White,
-                    modifier = Modifier.size(34.dp)
+                androidx.compose.foundation.Image(
+                    painter = androidx.compose.ui.res.painterResource(id = com.example.R.drawable.ic_dav_official),
+                    contentDescription = "DAV Official Crest",
+                    modifier = Modifier.size(62.dp)
                 )
             }
 
             Spacer(modifier = Modifier.height(14.dp))
 
             Text(
-                text = "Vhoqxeth",
+                text = "DAV InfoExchange",
                 color = VhoqxethTextPrimary,
                 fontSize = 28.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.SansSerif,
-                letterSpacing = 1.5.sp,
+                letterSpacing = 1.sp,
                 modifier = Modifier.testTag("auth_brand_title")
             )
 
             Text(
-                text = "IP-BASED PROTOCOL ACCESS",
+                text = "DAV COLLEGE MANAGING COMMITTEE • ESTD 1886",
                 color = VhoqxethCyanAccent,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold,
-                letterSpacing = 2.sp
+                letterSpacing = 1.sp
             )
 
             Spacer(modifier = Modifier.height(18.dp))
@@ -468,7 +468,7 @@ fun AuthGatewayScreen(
                             onBack = {
                                 step = AuthScreenStep.Unrecognized(currentStep.ip)
                             },
-                            onSubmit = { name, customId, password ->
+                            onSubmit = { name, customId, password, role, grade, section, subject, department, employeeId, designation ->
                                 isLoading = true
                                 errorMessage = null
                                 coroutineScope.launch {
@@ -476,7 +476,14 @@ fun AuthGatewayScreen(
                                         displayName = name,
                                         customUserId = customId,
                                         password = password,
-                                        ip = currentStep.ip
+                                        ip = currentStep.ip,
+                                        role = role,
+                                        grade = grade,
+                                        section = section,
+                                        subject = subject,
+                                        department = department,
+                                        employeeId = employeeId,
+                                        designation = designation
                                     )
                                     isLoading = false
                                     if (regResult.isSuccess) {
@@ -940,8 +947,27 @@ private fun RegisterFormContent(
     ip: String,
     isLoading: Boolean,
     onBack: () -> Unit,
-    onSubmit: (name: String, customUserId: String, password: String) -> Unit
+    onSubmit: (
+        name: String,
+        customUserId: String,
+        password: String,
+        role: String,
+        grade: String,
+        section: String,
+        subject: String,
+        department: String,
+        employeeId: String,
+        designation: String
+    ) -> Unit
 ) {
+    var selectedRole by remember { mutableStateOf(UserProfile.ROLE_STUDENT) }
+    var grade by remember { mutableStateOf("") }
+    var section by remember { mutableStateOf("") }
+    var subject by remember { mutableStateOf("") }
+    var department by remember { mutableStateOf("") }
+    var employeeId by remember { mutableStateOf("") }
+    var designation by remember { mutableStateOf("") }
+
     var name by remember { mutableStateOf("") }
     var customUserId by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -954,6 +980,9 @@ private fun RegisterFormContent(
     val isCustomIdValid = customUserId.trim().matches(Regex("^[a-zA-Z0-9_]{3,20}$"))
     val isPasswordValid = password.length >= 4
     val doPasswordsMatch = password.isNotEmpty() && password == confirmPassword
+
+    // If teacher, department or designation should ideally be specified
+    val isTeacherRole = selectedRole == UserProfile.ROLE_TEACHER
     val isFormValid = isNameValid && isCustomIdValid && isPasswordValid && doPasswordsMatch
 
     Column(
@@ -992,13 +1021,307 @@ private fun RegisterFormContent(
         Spacer(modifier = Modifier.height(14.dp))
 
         Text(
-            text = "Create your decentralized identity with password protection. Other personal profile details are optional and can be filled after login:",
+            text = "Select your scholastic identity to configure academic channels, verified permissions, and directory visibility:",
             color = VhoqxethTextMuted,
             fontSize = 12.sp,
             lineHeight = 17.sp
         )
 
         Spacer(modifier = Modifier.height(16.dp))
+
+        // 1. Role Selection (Student or Teacher) - FIRST THING
+        Text(
+            text = "CHOOSE INSTITUTIONAL ROLE",
+            color = VhoqxethTextSecondary,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // Student Card Button
+            val isStudentSelected = selectedRole == UserProfile.ROLE_STUDENT
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (isStudentSelected) VhoqxethPrimaryViolet.copy(alpha = 0.25f) else VhoqxethSurfaceElevated)
+                    .border(
+                        width = if (isStudentSelected) 1.5.dp else 1.dp,
+                        color = if (isStudentSelected) VhoqxethCyanAccent else VhoqxethBorder,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    .clickable { selectedRole = UserProfile.ROLE_STUDENT }
+                    .padding(vertical = 12.dp, horizontal = 10.dp)
+                    .testTag("role_option_student"),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Default.Badge,
+                        contentDescription = "Student Role",
+                        tint = if (isStudentSelected) VhoqxethCyanAccent else VhoqxethTextMuted,
+                        modifier = Modifier.size(26.dp)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Student",
+                        color = if (isStudentSelected) VhoqxethTextPrimary else VhoqxethTextSecondary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Learner / Scholar",
+                        color = VhoqxethTextMuted,
+                        fontSize = 10.sp
+                    )
+                }
+            }
+
+            // Teacher Card Button
+            val isTeacherSelected = selectedRole == UserProfile.ROLE_TEACHER
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (isTeacherSelected) VhoqxethPrimaryViolet.copy(alpha = 0.25f) else VhoqxethSurfaceElevated)
+                    .border(
+                        width = if (isTeacherSelected) 1.5.dp else 1.dp,
+                        color = if (isTeacherSelected) VhoqxethCyanAccent else VhoqxethBorder,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    .clickable { selectedRole = UserProfile.ROLE_TEACHER }
+                    .padding(vertical = 12.dp, horizontal = 10.dp)
+                    .testTag("role_option_teacher"),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Default.Verified,
+                        contentDescription = "Teacher Role",
+                        tint = if (isTeacherSelected) VhoqxethCyanAccent else VhoqxethTextMuted,
+                        modifier = Modifier.size(26.dp)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Teacher",
+                        color = if (isTeacherSelected) VhoqxethTextPrimary else VhoqxethTextSecondary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Faculty Member",
+                        color = VhoqxethTextMuted,
+                        fontSize = 10.sp
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // Role-Specific Fields
+        if (selectedRole == UserProfile.ROLE_STUDENT) {
+            // Student specific fields: Grade & Section
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "GRADE / CLASS",
+                        color = VhoqxethTextSecondary,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    OutlinedTextField(
+                        value = grade,
+                        onValueChange = { grade = it },
+                        placeholder = { Text("e.g. 10", color = VhoqxethTextMuted, fontSize = 12.sp) },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("student_grade_input"),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = VhoqxethSurfaceElevated,
+                            unfocusedContainerColor = VhoqxethSurfaceElevated,
+                            focusedBorderColor = VhoqxethCyanAccent,
+                            unfocusedBorderColor = VhoqxethBorder,
+                            focusedTextColor = VhoqxethTextPrimary,
+                            unfocusedTextColor = VhoqxethTextPrimary
+                        )
+                    )
+                }
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "SECTION",
+                        color = VhoqxethTextSecondary,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    OutlinedTextField(
+                        value = section,
+                        onValueChange = { section = it },
+                        placeholder = { Text("e.g. A, B", color = VhoqxethTextMuted, fontSize = 12.sp) },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("student_section_input"),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = VhoqxethSurfaceElevated,
+                            unfocusedContainerColor = VhoqxethSurfaceElevated,
+                            focusedBorderColor = VhoqxethCyanAccent,
+                            unfocusedBorderColor = VhoqxethBorder,
+                            focusedTextColor = VhoqxethTextPrimary,
+                            unfocusedTextColor = VhoqxethTextPrimary
+                        )
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = "SUBJECT / INTERESTS (OPTIONAL)",
+                color = VhoqxethTextSecondary,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.5.sp
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            OutlinedTextField(
+                value = subject,
+                onValueChange = { subject = it },
+                placeholder = { Text("e.g. Physics, Mathematics, CS", color = VhoqxethTextMuted, fontSize = 12.sp) },
+                singleLine = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("student_subject_input"),
+                shape = RoundedCornerShape(10.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = VhoqxethSurfaceElevated,
+                    unfocusedContainerColor = VhoqxethSurfaceElevated,
+                    focusedBorderColor = VhoqxethCyanAccent,
+                    unfocusedBorderColor = VhoqxethBorder,
+                    focusedTextColor = VhoqxethTextPrimary,
+                    unfocusedTextColor = VhoqxethTextPrimary
+                )
+            )
+        } else {
+            // Teacher specific fields: Department & Designation / Employee ID
+            Text(
+                text = "SUBJECT / DEPARTMENT",
+                color = VhoqxethTextSecondary,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.5.sp
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            OutlinedTextField(
+                value = department,
+                onValueChange = { department = it },
+                placeholder = { Text("e.g. Mathematics, Science, English", color = VhoqxethTextMuted, fontSize = 12.sp) },
+                singleLine = true,
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Verified,
+                        contentDescription = null,
+                        tint = VhoqxethCyanAccent,
+                        modifier = Modifier.size(18.dp)
+                    )
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("teacher_department_input"),
+                shape = RoundedCornerShape(10.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = VhoqxethSurfaceElevated,
+                    unfocusedContainerColor = VhoqxethSurfaceElevated,
+                    focusedBorderColor = VhoqxethCyanAccent,
+                    unfocusedBorderColor = VhoqxethBorder,
+                    focusedTextColor = VhoqxethTextPrimary,
+                    unfocusedTextColor = VhoqxethTextPrimary
+                )
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "DESIGNATION",
+                        color = VhoqxethTextSecondary,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    OutlinedTextField(
+                        value = designation,
+                        onValueChange = { designation = it },
+                        placeholder = { Text("e.g. Senior PGT", color = VhoqxethTextMuted, fontSize = 12.sp) },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("teacher_designation_input"),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = VhoqxethSurfaceElevated,
+                            unfocusedContainerColor = VhoqxethSurfaceElevated,
+                            focusedBorderColor = VhoqxethCyanAccent,
+                            unfocusedBorderColor = VhoqxethBorder,
+                            focusedTextColor = VhoqxethTextPrimary,
+                            unfocusedTextColor = VhoqxethTextPrimary
+                        )
+                    )
+                }
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "EMPLOYEE ID",
+                        color = VhoqxethTextSecondary,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    OutlinedTextField(
+                        value = employeeId,
+                        onValueChange = { employeeId = it },
+                        placeholder = { Text("e.g. DAV-FAC-204", color = VhoqxethTextMuted, fontSize = 12.sp) },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("teacher_employee_id_input"),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = VhoqxethSurfaceElevated,
+                            unfocusedContainerColor = VhoqxethSurfaceElevated,
+                            focusedBorderColor = VhoqxethCyanAccent,
+                            unfocusedBorderColor = VhoqxethBorder,
+                            focusedTextColor = VhoqxethTextPrimary,
+                            unfocusedTextColor = VhoqxethTextPrimary
+                        )
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
 
         // Display Name Field
         Text(
@@ -1012,7 +1335,7 @@ private fun RegisterFormContent(
         OutlinedTextField(
             value = name,
             onValueChange = { name = it },
-            placeholder = { Text("e.g. Alex Hunter", color = VhoqxethTextMuted, fontSize = 13.sp) },
+            placeholder = { Text(if (isTeacherRole) "e.g. Dr. Rajesh Sharma" else "e.g. Alex Hunter", color = VhoqxethTextMuted, fontSize = 13.sp) },
             singleLine = true,
             leadingIcon = {
                 Icon(
@@ -1055,7 +1378,7 @@ private fun RegisterFormContent(
             onValueChange = { input ->
                 customUserId = input.filter { it.isLetterOrDigit() || it == '_' }
             },
-            placeholder = { Text("e.g. cypher_fox", color = VhoqxethTextMuted, fontSize = 13.sp) },
+            placeholder = { Text(if (isTeacherRole) "e.g. prof_rajesh" else "e.g. rohit_10b", color = VhoqxethTextMuted, fontSize = 13.sp) },
             singleLine = true,
             leadingIcon = {
                 Icon(
@@ -1072,7 +1395,7 @@ private fun RegisterFormContent(
                     text = if (customUserId.isNotEmpty() && !isCustomIdValid) {
                         "3–20 characters, letters, numbers, or underscores"
                     } else {
-                        "Your immutable peer address on the network"
+                        "Your unique institutional address"
                     },
                     color = if (customUserId.isNotEmpty() && !isCustomIdValid) Color(0xFFFF8A80) else VhoqxethTextMuted,
                     fontSize = 11.sp
@@ -1195,7 +1518,7 @@ private fun RegisterFormContent(
                 onDone = {
                     keyboardController?.hide()
                     if (isFormValid && !isLoading) {
-                        onSubmit(name, customUserId, password)
+                        onSubmit(name, customUserId, password, selectedRole, grade, section, subject, department, employeeId, designation)
                     }
                 }
             ),
@@ -1227,7 +1550,7 @@ private fun RegisterFormContent(
         Button(
             onClick = {
                 keyboardController?.hide()
-                onSubmit(name, customUserId, password)
+                onSubmit(name, customUserId, password, selectedRole, grade, section, subject, department, employeeId, designation)
             },
             enabled = isFormValid && !isLoading,
             modifier = Modifier
@@ -1248,11 +1571,9 @@ private fun RegisterFormContent(
                 )
             } else {
                 Text(
-                    text = "Create Account with Password",
+                    text = if (isTeacherRole) "Create Faculty Account" else "Create Student Account",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold
-                )
-            }
         }
     }
 }

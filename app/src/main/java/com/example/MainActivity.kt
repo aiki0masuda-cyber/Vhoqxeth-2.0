@@ -32,8 +32,8 @@ import com.example.ui.auth.AuthGatewayScreen
 import com.example.ui.chat.ChatListScreen
 import com.example.ui.legal.LegalConsentScreen
 import com.example.ui.splash.SplashScreen
-import com.example.ui.theme.VhoqxethDarkBg
-import com.example.ui.theme.VhoqxethTheme
+import com.example.ui.theme.DavCanvasDark
+import com.example.ui.theme.DavInfoExchangeTheme
 import kotlinx.coroutines.launch
 
 enum class AppScreen {
@@ -49,12 +49,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            VhoqxethTheme {
+            DavInfoExchangeTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    VhoqxethApp()
+                    DavInfoExchangeApp()
                 }
             }
         }
@@ -62,7 +62,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun VhoqxethApp() {
+fun DavInfoExchangeApp() {
     val context = LocalContext.current
     val sessionManager = remember { SessionManager(context) }
     val coroutineScope = rememberCoroutineScope()
