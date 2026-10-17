@@ -1579,7 +1579,7 @@ private fun RegisterFormContent(
 }
 
 @Composable
-private fun LinkExistingContent(
+fun LinkExistingContent(
     ip: String,
     isLoading: Boolean,
     onBack: () -> Unit,
