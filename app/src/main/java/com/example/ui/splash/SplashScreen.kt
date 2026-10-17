@@ -1,4 +1,5 @@
 package com.example.ui.splash
+import androidx.compose.foundation.border
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
