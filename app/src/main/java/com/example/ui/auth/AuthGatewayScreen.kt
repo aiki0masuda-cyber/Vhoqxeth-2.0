@@ -503,7 +503,7 @@ fun AuthGatewayScreen(
                             onBack = {
                                 step = AuthScreenStep.Unrecognized(currentStep.ip)
                             },
-                            onLogin = { customId, password ->
+                            onLogin = { customId, password: String ->
                                 isLoading = true
                                 errorMessage = null
                                 coroutineScope.launch {
@@ -1573,7 +1573,7 @@ private fun RegisterFormContent(
                 Text(
                     text = if (isTeacherRole) "Create Faculty Account" else "Create Student Account",
                     fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold)
         }
     }
 }
