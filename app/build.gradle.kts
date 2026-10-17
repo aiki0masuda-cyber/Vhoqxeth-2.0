@@ -16,6 +16,9 @@ android {
         }
     }
 
+    // This bypasses the breaking AGP sourceSets restriction that was stopping your KSP builds
+    experimentalProperties["android.experimental.disallowKotlinSourceSets"] = false
+
     defaultConfig {
         applicationId = "com.aistudio.vhoqxeth.atuhsy"
         minSdk = 24
