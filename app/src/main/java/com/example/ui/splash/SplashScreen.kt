@@ -243,7 +243,7 @@ fun SplashScreen(
                     color = VhoqxethTextSecondary,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 1.sp
+                    letterSpacing = 1.sp)
             }
 
             Spacer(modifier = Modifier.height(44.dp))
