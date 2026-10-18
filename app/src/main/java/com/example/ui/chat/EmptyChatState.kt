@@ -16,12 +16,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.WifiTethering
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -43,6 +45,7 @@ import com.example.ui.theme.VhoqxethTextSecondary
 @Composable
 fun EmptyChatState(
     onAddContactClick: () -> Unit,
+    onCreateGroupClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -79,7 +82,7 @@ fun EmptyChatState(
             }
 
             Text(
-                text = "No mesh conversations yet",
+                text = "No conversations yet",
                 color = VhoqxethSlate900,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
@@ -87,7 +90,7 @@ fun EmptyChatState(
             )
 
             Text(
-                text = "Search for registered peers by their unique User ID to begin exchanging encrypted dispatches on the mesh.",
+                text = "Add peers by their User ID handle or establish a collaborative Study Circle group for your class, subject, or project.",
                 color = VhoqxethTextSecondary,
                 fontSize = 13.sp,
                 lineHeight = 19.sp,
@@ -110,15 +113,16 @@ fun EmptyChatState(
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "Zero dummy data • 100% Real-time Firestore sync",
+                    text = "DAV InfoExchange • Real-time Firestore sync",
                     color = VhoqxethIndigo600,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold
                 )
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
+            // Action Button: Add Contact
             Button(
                 onClick = onAddContactClick,
                 colors = ButtonDefaults.buttonColors(
@@ -138,6 +142,31 @@ fun EmptyChatState(
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "Add Contact by User ID",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+
+            // Action Button: Create Group / Study Circle
+            OutlinedButton(
+                onClick = onCreateGroupClick,
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = VhoqxethIndigo600
+                ),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("empty_state_create_group_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.GroupAdd,
+                    contentDescription = null,
+                    tint = VhoqxethIndigo600,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Create Group / Study Circle",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold
                 )

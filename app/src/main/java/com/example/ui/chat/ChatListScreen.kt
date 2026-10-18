@@ -105,6 +105,7 @@ import com.example.model.ActiveContact
 import com.example.model.ConversationCategory
 import com.example.model.ConversationThread
 import com.example.model.UserContact
+import com.example.ui.theme.DavAccentSky
 import com.example.ui.theme.VhoqxethBorder
 import com.example.ui.theme.VhoqxethCyanAccent
 import com.example.ui.theme.VhoqxethCyanBright
@@ -167,8 +168,10 @@ fun ChatListScreen(
     val liveContacts by chatRepository.observeContacts(currentHandle).collectAsState(initial = emptyList())
     val liveThreads by chatRepository.observeThreads(currentHandle).collectAsState(initial = emptyList())
 
-    // Add Contact dialog modal state
+    // Add Contact & Group dialog modal state
     var showAddContactDialog by remember { mutableStateOf(false) }
+    var showCreateGroupDialog by remember { mutableStateOf(false) }
+    var preselectedContactForGroup by remember { mutableStateOf<String?>(null) }
 
     // Search and filtering state
     var isSearchActive by remember { mutableStateOf(false) }
@@ -195,9 +198,10 @@ fun ChatListScreen(
     // Handle back button when search or sheets or secondary tabs are active
     BackHandler(
         enabled = selectedBottomNavIndex != 0 || isSearchActive || selectedThread != null || showNewChatSheet ||
-            showProfileSheet || showAboutAppSheet || showPrivacyPolicySheet || showTermsSheet || showAddContactDialog
+            showProfileSheet || showAboutAppSheet || showPrivacyPolicySheet || showTermsSheet || showAddContactDialog || showCreateGroupDialog
     ) {
         when {
+            showCreateGroupDialog -> showCreateGroupDialog = false
             showAddContactDialog -> showAddContactDialog = false
             showAboutAppSheet -> showAboutAppSheet = false
             showPrivacyPolicySheet -> showPrivacyPolicySheet = false
@@ -293,7 +297,7 @@ fun ChatListScreen(
                     val headerTitle = when (selectedBottomNavIndex) {
                         1 -> "Contacts"
                         2 -> "Settings"
-                        else -> "Vhoqxeth"
+                        else -> "DAV InfoExchange"
                     }
                     val headerSubtitle = when (selectedBottomNavIndex) {
                         1 -> "${liveContacts.size} Registered Peers"
@@ -325,7 +329,7 @@ fun ChatListScreen(
                                     .clip(CircleShape)
                                     .background(
                                         if (firestoreState is FirestoreConnectionState.Connected) {
-                                            VhoqxethOnlineGreen
+                                             VhoqxethOnlineGreen
                                         } else {
                                             VhoqxethPrimaryViolet
                                         }
@@ -341,8 +345,20 @@ fun ChatListScreen(
                         }
                     }
                 },
-                // ACTIONS IN RIGHT (Search & Overflow menu)
+                // ACTIONS IN RIGHT (New Group, Search & Overflow menu)
                 actions = {
+                    if (selectedBottomNavIndex == 0) {
+                        IconButton(
+                            onClick = { showCreateGroupDialog = true },
+                            modifier = Modifier.testTag("top_bar_new_group_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.GroupAdd,
+                                contentDescription = "Create Group / Study Circle",
+                                tint = VhoqxethPrimaryViolet
+                            )
+                        }
+                    }
 
                     IconButton(
                         onClick = {
@@ -524,7 +540,48 @@ fun ChatListScreen(
             }
         },
         floatingActionButton = {
-            if (selectedBottomNavIndex != 2) {
+            if (selectedBottomNavIndex == 0) {
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.padding(bottom = 12.dp)
+                ) {
+                    FloatingActionButton(
+                        onClick = {
+                            preselectedContactForGroup = null
+                            showCreateGroupDialog = true
+                        },
+                        containerColor = DavAccentSky,
+                        contentColor = Color.White,
+                        shape = CircleShape,
+                        modifier = Modifier
+                            .size(46.dp)
+                            .testTag("create_group_fab")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.GroupAdd,
+                            contentDescription = "Create Group / Study Circle",
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+
+                    FloatingActionButton(
+                        onClick = { showAddContactDialog = true },
+                        containerColor = VhoqxethPrimaryViolet,
+                        contentColor = Color.White,
+                        shape = CircleShape,
+                        modifier = Modifier
+                            .size(54.dp)
+                            .testTag("new_chat_fab")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PersonAdd,
+                            contentDescription = "Add Contact by User ID",
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
+                }
+            } else if (selectedBottomNavIndex == 1) {
                 FloatingActionButton(
                     onClick = { showAddContactDialog = true },
                     containerColor = VhoqxethPrimaryViolet,
@@ -654,7 +711,11 @@ fun ChatListScreen(
                         if (liveThreads.isEmpty() && searchQuery.isBlank()) {
                             // Clean empty state card when new user account has zero chats
                             EmptyChatState(
-                                onAddContactClick = { showAddContactDialog = true }
+                                onAddContactClick = { showAddContactDialog = true },
+                                onCreateGroupClick = {
+                                    preselectedContactForGroup = null
+                                    showCreateGroupDialog = true
+                                }
                             )
                         } else if (filteredThreads.isEmpty()) {
                             Box(
@@ -731,7 +792,11 @@ fun ChatListScreen(
                                 )
                             }
                         },
-                        onAddContactClick = { showAddContactDialog = true }
+                        onAddContactClick = { showAddContactDialog = true },
+                        onAddToGroupClick = { contact ->
+                            preselectedContactForGroup = contact.contactUserId
+                            showCreateGroupDialog = true
+                        }
                     )
                 }
                 2 -> {
@@ -830,6 +895,9 @@ fun ChatListScreen(
                     showNewChatSheet = false
                     if (actionName == "New Direct Message") {
                         showAddContactDialog = true
+                    } else if (actionName == "New Group" || actionName.contains("Group", ignoreCase = true)) {
+                        preselectedContactForGroup = null
+                        showCreateGroupDialog = true
                     } else {
                         coroutineScope.launch {
                             snackbarHostState.showSnackbar("Launched: $actionName")
@@ -848,6 +916,24 @@ fun ChatListScreen(
             onDismiss = { showAddContactDialog = false },
             onContactAdded = { newThread ->
                 showAddContactDialog = false
+                selectedThread = newThread
+            }
+        )
+    }
+
+    // Modal Dialog: Create Group / Study Circle & Add Contacts
+    if (showCreateGroupDialog && currentUserState != null) {
+        CreateStudyCircleDialog(
+            currentUser = currentUserState!!,
+            chatRepository = chatRepository,
+            initialPreselectedContact = preselectedContactForGroup,
+            onDismiss = {
+                showCreateGroupDialog = false
+                preselectedContactForGroup = null
+            },
+            onCircleCreated = { newThread ->
+                showCreateGroupDialog = false
+                preselectedContactForGroup = null
                 selectedThread = newThread
             }
         )

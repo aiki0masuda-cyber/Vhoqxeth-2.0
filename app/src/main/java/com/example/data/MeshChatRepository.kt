@@ -10,6 +10,7 @@ import com.example.model.MessageStatus
 import com.example.model.SnippetType
 import com.example.model.UserContact
 import com.example.model.UserProfile
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.Dispatchers
@@ -438,6 +439,123 @@ class MeshChatRepository(
             Result.success(created)
         } catch (e: Exception) {
             Log.e(tag, "Failed to send message: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Dispatches a message containing a universal file attachment to the thread.
+     */
+    suspend fun sendFileMessage(
+        threadId: String,
+        senderProfile: UserProfile,
+        content: String,
+        attachmentUri: String,
+        attachmentName: String,
+        attachmentType: String,
+        attachmentSize: String
+    ): Result<ChatMessage> = withContext(Dispatchers.IO) {
+        try {
+            val now = getCurrentIsoTimestamp()
+            val senderHandle = senderProfile.customUserId.trim().removePrefix("@").lowercase()
+            val messageId = "msg_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}"
+
+            val displaySnippet = if (content.trim().isNotBlank()) {
+                content.trim()
+            } else {
+                "📎 $attachmentName ($attachmentSize)"
+            }
+
+            val msgPayload = mapOf(
+                "messageId" to messageId,
+                "threadId" to threadId,
+                "senderId" to senderHandle,
+                "senderName" to senderProfile.displayName,
+                "senderRole" to if (senderProfile.isTeacher) UserProfile.ROLE_TEACHER else UserProfile.ROLE_STUDENT,
+                "content" to content.trim(),
+                "timestamp" to now,
+                "attachmentUri" to attachmentUri,
+                "attachmentName" to attachmentName,
+                "attachmentType" to attachmentType,
+                "attachmentSize" to attachmentSize
+            )
+
+            // Write message document
+            db.collection("threads")
+                .document(threadId)
+                .collection("messages")
+                .document(messageId)
+                .set(msgPayload)
+                .await()
+
+            // Update thread lastMessage & updatedAt
+            val updatePayload = mapOf<String, Any>(
+                "lastMessage" to displaySnippet,
+                "lastSenderId" to senderHandle,
+                "lastSenderName" to senderProfile.displayName,
+                "updatedAt" to now
+            )
+            db.collection("threads").document(threadId).update(updatePayload).await()
+
+            val created = ChatMessage(
+                messageId = messageId,
+                threadId = threadId,
+                senderId = senderHandle,
+                senderName = senderProfile.displayName,
+                senderRole = if (senderProfile.isTeacher) UserProfile.ROLE_TEACHER else UserProfile.ROLE_STUDENT,
+                content = content.trim(),
+                timestamp = now,
+                attachmentUri = attachmentUri,
+                attachmentName = attachmentName,
+                attachmentType = attachmentType,
+                attachmentSize = attachmentSize
+            )
+            Result.success(created)
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to send file message: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Adds an existing user contact to a group thread.
+     */
+    suspend fun addMemberToGroup(
+        threadId: String,
+        newMemberHandle: String,
+        addedByProfile: UserProfile
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val handle = newMemberHandle.trim().removePrefix("@").lowercase()
+            if (handle.isBlank()) {
+                return@withContext Result.failure(IllegalArgumentException("Member handle cannot be empty."))
+            }
+
+            // 1. Add to participantIds array in thread
+            db.collection("threads").document(threadId).update(
+                mapOf(
+                    "participantIds" to FieldValue.arrayUnion(handle),
+                    "updatedAt" to getCurrentIsoTimestamp()
+                )
+            ).await()
+
+            // 2. Add system notification message in thread
+            val now = getCurrentIsoTimestamp()
+            val msgId = "sys_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}"
+            val sysMsgPayload = mapOf(
+                "messageId" to msgId,
+                "threadId" to threadId,
+                "senderId" to "system",
+                "senderName" to "DAV InfoExchange",
+                "senderRole" to "SYSTEM",
+                "content" to "@$handle was added to the group by ${addedByProfile.displayName.ifBlank { "@${addedByProfile.customUserId}" }}.",
+                "timestamp" to now
+            )
+            db.collection("threads").document(threadId).collection("messages").document(msgId).set(sysMsgPayload).await()
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to add member to group: ${e.message}", e)
             Result.failure(e)
         }
     }

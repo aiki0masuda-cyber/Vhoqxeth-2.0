@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shield
@@ -66,6 +67,7 @@ fun ContactsTabContent(
     contacts: List<UserContact>,
     onContactSelected: (UserContact) -> Unit,
     onAddContactClick: () -> Unit,
+    onAddToGroupClick: ((UserContact) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var searchQuery by remember { mutableStateOf("") }
@@ -290,7 +292,8 @@ fun ContactsTabContent(
                 items(filteredContacts, key = { it.contactUserId }) { contact ->
                     ContactCardItem(
                         contact = contact,
-                        onMessageClick = { onContactSelected(contact) }
+                        onMessageClick = { onContactSelected(contact) },
+                        onAddToGroupClick = onAddToGroupClick
                     )
                 }
             }
@@ -301,7 +304,8 @@ fun ContactsTabContent(
 @Composable
 private fun ContactCardItem(
     contact: UserContact,
-    onMessageClick: () -> Unit
+    onMessageClick: () -> Unit,
+    onAddToGroupClick: ((UserContact) -> Unit)? = null
 ) {
     Box(
         modifier = Modifier
@@ -398,6 +402,26 @@ private fun ContactCardItem(
                         }
                     }
                 }
+            }
+
+            // Add to Group button
+            if (onAddToGroupClick != null) {
+                IconButton(
+                    onClick = { onAddToGroupClick(contact) },
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(VhoqxethPrimaryViolet.copy(alpha = 0.12f))
+                        .testTag("contact_add_to_group_button_${contact.contactUserId}")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.GroupAdd,
+                        contentDescription = "Add @${contact.contactUserId} to Group",
+                        tint = VhoqxethPrimaryViolet,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(6.dp))
             }
 
             // Chat button

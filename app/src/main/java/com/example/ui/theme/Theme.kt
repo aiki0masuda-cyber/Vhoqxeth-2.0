@@ -12,18 +12,18 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-private val MinimalistPrecisionScheme = darkColorScheme(
-    primary = DavAccentSky,
-    onPrimary = Color.Black,
+private val ScholasticLightScheme = lightColorScheme(
+    primary = DavBrandRoyalBlue,
+    onPrimary = Color.White,
     primaryContainer = DavSurfaceElevated,
-    onPrimaryContainer = DavAccentSky,
-    secondary = DavAccentIndigo,
+    onPrimaryContainer = DavBrandRoyalBlue,
+    secondary = DavAccentSky,
     onSecondary = Color.White,
-    secondaryContainer = DavSurfaceCard,
-    onSecondaryContainer = Color(0xFFA5B4FC),
+    secondaryContainer = Color(0xFFE0F2FE),
+    onSecondaryContainer = Color(0xFF0369A1),
     tertiary = DavAccentGold,
-    onTertiary = Color.Black,
-    background = DavCanvasDark,
+    onTertiary = Color.White,
+    background = DavCanvasLight,
     onBackground = DavTextPrimary,
     surface = DavSurfaceCard,
     onSurface = DavTextPrimary,
@@ -34,10 +34,10 @@ private val MinimalistPrecisionScheme = darkColorScheme(
 
 @Composable
 fun DavInfoExchangeTheme(
-    darkTheme: Boolean = true, // Minimalist Precision defaults to focused dark slate canvas
+    darkTheme: Boolean = false, // Clean Scholastic White Light Theme
     content: @Composable () -> Unit
 ) {
-    val colorScheme = MinimalistPrecisionScheme
+    val colorScheme = ScholasticLightScheme
 
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -45,9 +45,9 @@ fun DavInfoExchangeTheme(
             val window = (view.context as? Activity)?.window
             if (window != null) {
                 window.statusBarColor = colorScheme.background.toArgb()
-                window.navigationBarColor = colorScheme.background.toArgb()
-                WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
-                WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = false
+                window.navigationBarColor = colorScheme.surface.toArgb()
+                WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = true
+                WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = true
             }
         }
     }
@@ -61,12 +61,12 @@ fun DavInfoExchangeTheme(
 
 @Composable
 fun DavCheekaTheme(
-    darkTheme: Boolean = true,
+    darkTheme: Boolean = false,
     content: @Composable () -> Unit
 ) = DavInfoExchangeTheme(darkTheme = darkTheme, content = content)
 
 @Composable
 fun VhoqxethTheme(
-    darkTheme: Boolean = true,
+    darkTheme: Boolean = false,
     content: @Composable () -> Unit
 ) = DavInfoExchangeTheme(darkTheme = darkTheme, content = content)
