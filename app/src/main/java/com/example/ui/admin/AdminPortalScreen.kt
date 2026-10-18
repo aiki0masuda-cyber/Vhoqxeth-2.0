@@ -104,6 +104,7 @@ val AdminAmber = Color(0xFFFFB300)
 val AdminCrimson = Color(0xFFFF5252)
 val AdminSurface = Color(0xFF14121E)
 val AdminCardBg = Color(0xFF1B1829)
+val AdminBorder = Color(0xFF2E2A44)
 
 @Composable
 fun AdminPortalScreen(

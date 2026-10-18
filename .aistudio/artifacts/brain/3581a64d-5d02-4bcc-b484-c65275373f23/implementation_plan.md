@@ -1,165 +1,149 @@
-# DAV InfoExchange — Institutional Rebranding & Faculty-Student Role Architecture
+# DAV InfoExchange — Group Collaboration, Universal File Attachments & Clean Scholastic Light Theme
 
-Transform the application from **DAV Cheeka** to **DAV InfoExchange** across the entire UI, adopt the official **DAV College Managing Committee** emblem (ESTD 1886) as the primary launcher and in-app insignia, and introduce dedicated **Student** vs **Teacher** role selection during account onboarding and administration.
+Transform **DAV InfoExchange** into a collaborative scholastic exchange by enabling any user to create groups, select and add contacts to existing or new groups, send all file attachment types via the Android system document picker, and switch the application visual design to a clean scholastic **Light Theme** with pure white, royal blue, and slate accents.
 
 ---
 
-## User Review & Clarifications Alignment
+## User Review & Critical Decisions
 
 > [!IMPORTANT]
 > The following user-confirmed specifications guide this implementation:
-> 1. **Application Name**: Rename to **DAV InfoExchange** throughout the entire UI, launcher label, metadata, and build configurations.
-> 2. **Official DAV Emblem**: Adopt the uploaded DAV College Managing Committee crest (circular seal with "D.A.V. COLLEGE MANAGING COMMITTEE", radiant rising sun, sacred "ओ३म्", blue water ripples, laurel wreath, and "ESTD 1886" ribbon banner) with clean presentation as requested ("Just like as it is").
-> 3. **Role-Based Onboarding (Student vs Teacher)**:
->    - During user registration or admin creation, user first chooses: **Student** or **Teacher**.
->    - **Teacher Fields**: Prompts for **Subject / Department** and **Employee ID / Designation**.
->    - **Student Fields**: Prompts for **Grade / Class**, **Section**, and **Subject Specialization**.
-> 4. **Visual Differentiation**:
->    - **Verified Faculty Badge**: Displays a prominent `[ FACULTY ✓ ]` badge with verified shield icon beside Teacher handles in chat bubbles, conversation threads, peer rosters, and profile cards.
-> 5. **Core Architecture Preserved**:
->    - Admin Quarantined Enclave with full authority.
->    - Autonomous AI Self-Healing Guardian.
->    - Salted SHA-256 password cryptography and real-time Firestore listeners.
+> 1. **Group Creation & Member Management**: Any user (Student or Teacher) can create groups and add existing contacts directly during creation or at any time from group details.
+> 2. **File Attachments**: Supported for all file types (PDFs, study notes, images, documents, audio, spreadsheets, archives) using the zero-permission Android system document picker (`ActivityResultContracts.OpenDocument`).
+> 3. **Clean Scholastic Light Theme**: Default posture set to crisp scholastic white (`#FFFFFF` / `#F8FAFC`), deep navy text (`#0F172A`), royal blue brand accent (`#1E2A78`), sky blue highlights (`#0284C7`), and clean slate borders (`#E2E8F0`).
 
 ---
 
-## 1. User Flows & Interface Changes
+## 1. Overview & Core Concept
 
-### 1.1 Splash & Authentication Gateway
-- **Splash Screen**:
-  - Displays the official DAV College Managing Committee insignia.
-  - Title: **DAV InfoExchange**.
-  - Subtitle: **DAV COLLEGE MANAGING COMMITTEE • ESTD 1886**.
-- **Auth Gateway Screen**:
-  - Top header and brand card display the DAV emblem and **DAV InfoExchange** title.
-  - In the Registration / Sign-Up tab:
-    - User enters Visible Name, Handle (`@username`), Password, and Confirm Password.
-    - Immediately below, an interactive Role Selector appears:
-      - **[ Student ]** (Icon: `School`) vs **[ Teacher ]** (Icon: `WorkspacePremium`).
-    - Depending on the selected role, the initial scholastic onboarding pre-configures the account.
+- **What It Does**:
+  - **Group Creation**: Users can create study circles, subject channels, or faculty groups, assigning a name, category, and inviting contacts with interactive multi-select chips.
+  - **Add Contacts to Existing Groups**: Group threads feature an "Add Members" action allowing group participants to seamlessly enroll peers from their contacts list into the group.
+  - **Universal File Attachments**: Users can tap an attachment button in any direct or group conversation to attach any document, assignment, image, or study file. File bubbles display filename, size, extension tag, and open/view actions.
+  - **Crisp Scholastic Light Theme**: The dark interface is replaced with an airy, academic aesthetic matching official DAV institutions.
 
-### 1.2 Academic Profile Setup & Editing
-- **Optional Profile Setup Sheet & Profile Editor Dialog**:
-  - If **Student**:
-    - Grade / Class dropdown or input (e.g., "10", "11", "12")
-    - Section (e.g., "A", "B", "C")
-    - Subject Interests / Bio
-  - If **Teacher**:
-    - Department / Subject Area (e.g., "Mathematics & Computing", "Department of Physics")
-    - Designation / Employee ID (e.g., "Senior PGT Lecturer", "DAV-FAC-204")
-    - Academic Bio & Office Hours (e.g., "Senior Wing • Room 204")
-
-### 1.3 Chat List & Conversation Threads
-- **Messages & Headers**:
-  - Messages sent by Teachers display a distinctive `[ FACULTY ✓ ]` verified badge with sky-blue/indigo highlight next to their name.
-  - Student messages display their class badge (e.g., `Class 10-B`).
-
-### 1.4 Directory / Contacts Roster
-- Directory entries display role filter chips (`All`, `Faculty`, `Students`).
-- Teacher contact cards feature an institutional graduation cap/shield icon, designation, and department details.
-
-### 1.5 Admin Portal & Quarantined Enclave
-- In the "Add User" dialog:
-  - Admin selects **Student** or **Teacher**, with input fields tailored to the chosen role.
-- In the **Quarantined Account Enclave**:
-  - Displays whether the inspected user is a Faculty Member or Student.
-  - Admin can update role attributes (Department, Employee ID, Grade, Section).
+- **Target Audience**:
+  - Students sharing homework, study circle notes, and project documents.
+  - Teachers organizing department groups, broadcasting announcements, and distributing PDFs.
 
 ---
 
-## 2. Technical Architecture & Data Schema Changes
+## 2. User Experience & Visual Design
 
-### 2.1 Model Updates (`UserProfile.kt`)
-Extend `UserProfile` with role attributes:
-```kotlin
-data class UserProfile(
-    val userId: String = "",
-    val displayName: String = "",
-    val customUserId: String = "",
-    val passwordHash: String = "",
-    val passwordSalt: String = "",
-    val role: String = "STUDENT",             // "STUDENT" or "TEACHER"
-    val designation: String = "",             // e.g. "Senior PGT", "Faculty Member"
-    val department: String = "",              // e.g. "Department of Mathematics"
-    val employeeId: String = "",              // e.g. "DAV-FAC-102"
-    val grade: String = "",                   // e.g. "10", "12"
-    val section: String = "",                 // e.g. "A", "B"
-    val subject: String = "",
-    val description: String = "",
-    val firstName: String = "",
-    val lastName: String = "",
-    val dateOfBirth: String = "",
-    val hasCompletedOptionalSetup: Boolean = false,
-    val associatedIps: List<String> = emptyList(),
-    val currentIp: String = "",
-    val createdAt: String = ""
-) {
-    val isTeacher: Boolean get() = role.equals("TEACHER", ignoreCase = true)
+### 2.1 Clean Scholastic Light Theme Palette
+- **Background / Canvas**: `#F8FAFC` (Slate 50) and `#FFFFFF` (Pure Scholastic White).
+- **Surface Cards**: `#FFFFFF` with crisp `#E2E8F0` (Slate 200) borders and soft elevation.
+- **Brand Primary**: Official Royal Blue `#1E2A78` (representing DAV institutional heritage).
+- **Secondary / Action Accent**: Sky Cyan `#0284C7` (for verified badges, active tabs, and primary action buttons).
+- **Text Hierarchy**:
+  - Primary Headlines & Text: Deep Slate/Navy `#0F172A`.
+  - Secondary Text & Meta: Muted Slate `#475569`.
+  - Captions & Timestamps: `#64748B`.
+- **Chat Bubbles**:
+  - User's Sent Messages: Royal Blue gradient (`#1E2A78` → `#2563EB`) with crisp white text.
+  - Received Messages: Crisp White card (`#FFFFFF`) with `#E2E8F0` border and dark text (`#0F172A`).
 
-    val scholasticBadge: String
-        get() = if (isTeacher) {
-            if (designation.isNotBlank()) designation else "Faculty"
-        } else {
-            val g = grade.trim()
-            val s = section.trim()
-            when {
-                g.isNotBlank() && s.isNotBlank() -> "Class $g-$s"
-                g.isNotBlank() -> "Class $g"
-                s.isNotBlank() -> "Sec $s"
-                else -> "Student"
-            }
-        }
-}
+### 2.2 Group Creation & Member Management Flow
+1. **Fab / Header Action in Chats Tab**: A "+ Group" or "New Study Circle" action button.
+2. **Create Group Dialog**:
+   - Group Title & Description.
+   - Group Type / Academic Category (Study Circle, Class Group, Subject Project, Faculty Room).
+   - "Select Contacts to Add": A scrollable checklist/chip row of the user's added contacts with quick search.
+3. **Group Header & Participant Enclave**:
+   - In `ConversationThreadSheet`, group threads display participant avatars and member count.
+   - An "Add Contacts" icon opens a fast selector to add more contacts to the group in real time.
+
+### 2.3 Universal File Attachments Flow
+1. **Chat Input Bar**: A paperclip icon (`Icons.Default.AttachFile`) next to the text input.
+2. **Picker Launch**: Invokes `ActivityResultContracts.OpenDocument()` with MIME type `*/*`.
+3. **Preview & Confirmation**:
+   - Shows a pending attachment preview badge (icon, filename, filesize) above the input bar before sending.
+   - User can type an accompanying caption or send the file directly.
+4. **Chat Bubble Presentation**:
+   - File bubble card with category-coded badge (PDF, DOCX, IMG, ZIP).
+   - Display of file title, human-readable size (e.g. `2.4 MB`), and timestamp.
+
+---
+
+## 3. Key Product Decisions & Trade-Offs
+
+- **Decision 1: File Storage Strategy (Android Content Provider + Metadata)**
+  - *Chosen Approach*: Files picked via `OpenDocument` persist persistent read permission via `takePersistableUriPermission` and store metadata (URI string, filename, size, MIME type) in the Firestore message document.
+  - *Why*: Allows zero-permission document picking across all Android versions without requiring risky external storage permissions, providing instant sharing of real files.
+- **Decision 2: Light Theme Architecture & Contrast Compliance**
+  - *Chosen Approach*: Update `Theme.kt` with a tailored `LightColorScheme` where `isAppearanceLightStatusBars = true` and `isAppearanceLightNavigationBars = true`.
+  - *Why*: Ensures optimal readability and eliminates all dark-mode eye strain while preserving the DAV institutional branding.
+
+---
+
+## 4. Technical Architecture & Data Strategy
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                        DAV InfoExchange Light Theme                    │
+├──────────────────────────┬─────────────────────────────────────────────┤
+│   ChatListScreen         │   ConversationThreadSheet                   │
+│   ├── Active Groups Filter│   ├── Message List (Text & File Cards)      │
+│   ├── Create Group Dialog│   ├── Group Members Header + "Add Contacts" │
+│   └── Contact Pickers    │   └── Input Bar + System Document Picker    │
+└────────────┬─────────────┴──────────────────────┬──────────────────────┘
+             │                                    │
+             ▼                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                        MeshChatRepository                              │
+│   ├── createGroup(name, category, participants)                       │
+│   ├── addMemberToGroup(threadId, newParticipantHandle)                │
+│   ├── sendFileMessage(threadId, sender, content, attachmentMeta)      │
+│   └── observeThreads() & observeMessages()                             │
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 2.2 App Icon & Platform Synchronizations
-1. **`metadata.json`**:
-   - `name`: `"DAV InfoExchange"`
-   - `description`: `"Official scholastic communication exchange for DAV institutions, supporting students and faculty."`
-2. **`app/src/main/res/values/strings.xml`**:
-   - `app_name`: `"DAV InfoExchange"`
-   - `app_full_name`: `"DAV InfoExchange"`
-   - `institution_name`: `"DAV College Managing Committee"`
-3. **`settings.gradle.kts`**:
-   - `rootProject.name = "DAV InfoExchange"`
-4. **App Icon Asset Generation**:
-   - Centered circular DAV College Managing Committee emblem with crisp white background as requested (`ic_launcher_background.xml` = `#FFFFFF`).
-   - Standard 66dp safe-zone layer in `ic_launcher_foreground.xml`.
-   - PNG conversions across all five density folders (`mdpi`, `hdpi`, `xhdpi`, `xxhdpi`, `xxxhdpi`).
+### 4.1 Data Schema Extensions
+
+#### `ChatMessage` Model
+```kotlin
+data class ChatMessage(
+    val messageId: String = "",
+    val threadId: String = "",
+    val senderId: String = "",
+    val senderName: String = "",
+    val senderRole: String = "STUDENT",
+    val content: String = "",
+    val timestamp: String = "",
+    val attachmentUri: String? = null,
+    val attachmentName: String? = null,
+    val attachmentType: String? = null,
+    val attachmentSize: String? = null
+)
+```
+
+#### `ConversationThread` Model
+```kotlin
+data class ConversationThread(
+    val id: String = "",
+    val name: String = "",
+    val isGroup: Boolean = false,
+    val participantIds: List<String> = emptyList(),
+    val groupCategory: String = "STUDY_CIRCLE",
+    val lastMessage: String = "",
+    ...
+)
+```
 
 ---
 
-## 3. Step-by-Step Implementation Steps
+## 5. Step-by-Step Implementation Sequence
 
-1. **Step 1: Launcher Icon & Branding Assets**
-   - Create official DAV emblem drawable asset `ic_dav_official_crest.png` / `jpg`.
-   - Update `ic_launcher_background.xml` to `#FFFFFF` and `ic_launcher_foreground.xml` to reference the official crest.
-   - Generate raster densities for `ic_launcher.png` and `ic_launcher_round.png`.
-
-2. **Step 2: Platform Identity Update**
-   - Update `metadata.json`, `strings.xml`, and `settings.gradle.kts`.
-
-3. **Step 3: UserProfile Schema Extension**
-   - Add `role`, `designation`, `department`, `employeeId`, and helper properties (`isTeacher`, `scholasticBadge`) to `UserProfile.kt`.
-   - Update `AuthRepository.kt` to persist role and teacher attributes during registration.
-   - Update `AdminRepository.kt` to support role and teacher attributes when creating/editing users.
-
-4. **Step 4: Auth Gateway & Registration Screen**
-   - Add **Student** vs **Teacher** role selection to `AuthGatewayScreen.kt`.
-   - Dynamically adjust profile inputs based on the selected role.
-   - Update branding text and logo to **DAV InfoExchange**.
-
-5. **Step 5: Profile Setup & Editor Dialogs**
-   - Update `OptionalProfileSetupSheet.kt` and `ProfileEditorDialog.kt` to present teacher fields (Department, Employee ID, Designation) when `role == "TEACHER"`, or student fields (Grade, Section) when `role == "STUDENT"`.
-
-6. **Step 6: Chat List, Chat Item, & Directory Integration**
-   - Display `[ FACULTY ✓ ]` verified badge beside Teacher names in `ChatItemRow.kt`, `ChatListScreen.kt`, and `ActiveContactsRow`.
-   - Add role filter or distinction in `ContactsTabContent.kt`.
-
-7. **Step 7: Admin Portal & Quarantined Enclave Updates**
-   - Add role selector (Student/Teacher) to `AddUserDialog` in `AdminPortalScreen.kt`.
-   - Show and allow updating role attributes in `QuarantinedAccountSheet.kt`.
-
-8. **Step 8: Verification & Compilation**
-   - Execute `compile_applet` to confirm zero compilation errors.
-   - Verify proper responsive layout, edge-to-edge padding, and test tags.
+1. **Light Theme Overhaul**:
+   - Update `Color.kt` and `Theme.kt` to default to the clean scholastic white, royal blue, and slate palette.
+   - Update `MainActivity.kt`, `ChatListScreen.kt`, `ContactsTabContent.kt`, `ConversationThreadSheet.kt`, and `AdminPortalScreen.kt` to clean light surfaces and high-contrast dark text.
+2. **File Attachments Integration**:
+   - Extend `ChatMessage.kt` with attachment properties (`attachmentUri`, `attachmentName`, `attachmentType`, `attachmentSize`).
+   - Add `sendFileMessage` method in `MeshChatRepository.kt`.
+   - Add attachment launcher and file card composables in `ConversationThreadSheet.kt`.
+3. **Group Creation & Adding Contacts**:
+   - Enhance group creation dialog with multi-select contact picker chips.
+   - Add `addMemberToGroup` method in `MeshChatRepository.kt`.
+   - Add "Add Members" action and dialog inside `ConversationThreadSheet.kt` for existing groups.
+4. **Build & Compilation Verification**:
+   - Run `compile_applet` to ensure zero compilation or syntax errors.
