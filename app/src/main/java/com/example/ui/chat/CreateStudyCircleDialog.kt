@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.GroupAdd
@@ -33,6 +34,10 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import coil.compose.AsyncImage
+import com.example.ai.AiImageGeneratorEngine
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -77,6 +82,7 @@ fun CreateStudyCircleDialog(
     onCircleCreated: (ConversationThread) -> Unit
 ) {
     val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     var groupName by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("Study Circle") }
@@ -85,6 +91,8 @@ fun CreateStudyCircleDialog(
     var subject by remember { mutableStateOf(currentUser.subject) }
     var description by remember { mutableStateOf("") }
     var manualHandleInput by remember { mutableStateOf("") }
+    var customAvatarUri by remember { mutableStateOf<String?>(null) }
+    var showAiAvatarDialog by remember { mutableStateOf(false) }
 
     val selectedContacts = remember(initialPreselectedContact) {
         mutableStateListOf<String>().apply {
@@ -206,6 +214,80 @@ fun CreateStudyCircleDialog(
                         unfocusedTextColor = DavTextPrimary
                     )
                 )
+
+                // Group Avatar with AI Generator
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(DavSurfaceElevated)
+                        .padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(CircleShape)
+                            .background(DavBrandRoyalBlue),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (!customAvatarUri.isNullOrBlank()) {
+                            AsyncImage(
+                                model = customAvatarUri,
+                                contentDescription = "Group Avatar",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .size(46.dp)
+                                    .clip(CircleShape)
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Groups,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(10.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (customAvatarUri != null) "AI Avatar Set" else "Group Emblem / Avatar",
+                            color = DavTextPrimary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = if (customAvatarUri != null) "Custom AI emblem created" else "Generate with Gemini Nano Banana",
+                            color = DavTextMuted,
+                            fontSize = 10.sp
+                        )
+                    }
+
+                    Button(
+                        onClick = { showAiAvatarDialog = true },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = DavBrandRoyalBlue.copy(alpha = 0.1f),
+                            contentColor = DavBrandRoyalBlue
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.testTag("circle_generate_avatar_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (customAvatarUri != null) "Change" else "AI Avatar",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
 
                 // Grade & Section Row
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -452,7 +534,13 @@ fun CreateStudyCircleDialog(
 
                         isSubmitting = false
                         if (result.isSuccess) {
-                            onCircleCreated(result.getOrThrow())
+                            val created = result.getOrThrow()
+                            if (!customAvatarUri.isNullOrBlank()) {
+                                coroutineScope.launch {
+                                    chatRepository.updateGroupAvatar(created.id, customAvatarUri!!)
+                                }
+                            }
+                            onCircleCreated(created.copy(avatarUri = customAvatarUri))
                         } else {
                             errorMessage = result.exceptionOrNull()?.message ?: "Failed to create group."
                         }
@@ -479,4 +567,27 @@ fun CreateStudyCircleDialog(
             }
         }
     )
+
+    if (showAiAvatarDialog) {
+        val suggestedPrompt = if (groupName.isNotBlank()) {
+            "Academic emblem crest for \"${groupName.trim()}\" ${if (subject.isNotBlank()) "focusing on $subject" else ""}, featuring Vedic lamp of learning and knowledge shield, clean educational vector crest"
+        } else {
+            "Prestigious scholastic crest emblem with knowledge torch, open textbook and laurel wreath, clean vector emblem"
+        }
+
+        AiGenerateImageDialog(
+            initialPrompt = suggestedPrompt,
+            title = "Generate Group Avatar Crest",
+            confirmButtonLabel = "Use as Group Avatar",
+            onDismiss = { showAiAvatarDialog = false },
+            onImageAccepted = { bitmap, _ ->
+                val uri = AiImageGeneratorEngine.saveBitmapToLocalCache(
+                    context = context,
+                    bitmap = bitmap,
+                    prefix = "new_group_avatar"
+                )
+                customAvatarUri = uri.toString()
+            }
+        )
+    }
 }

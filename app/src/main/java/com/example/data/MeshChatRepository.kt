@@ -147,6 +147,17 @@ class MeshChatRepository(
                             "CHANNEL" -> ConversationCategory.CHANNEL
                             else -> ConversationCategory.DIRECT
                         }
+                        val creatorId = doc.getString("creatorId") ?: ""
+                        @Suppress("UNCHECKED_CAST")
+                        val rawAdminIds = (doc.get("adminIds") as? List<String>) ?: emptyList()
+                        val adminIds = if (rawAdminIds.isEmpty() && creatorId.isNotBlank()) listOf(creatorId) else rawAdminIds
+                        val onlyAdminsCanChat = doc.getBoolean("onlyAdminsCanChat") == true
+                        val onlyAdminsCanAddMembers = doc.getBoolean("onlyAdminsCanAddMembers") == true
+                        val avatarUri = doc.getString("avatarUri")
+                        val subject = doc.getString("subject") ?: ""
+                        val grade = doc.getString("grade") ?: ""
+                        val section = doc.getString("section") ?: ""
+                        val description = doc.getString("description") ?: ""
 
                         // Determine display name and initials
                         val displayName: String
@@ -186,7 +197,16 @@ class MeshChatRepository(
                             lastSenderId = lastSenderId,
                             participantIds = participants,
                             messageStatus = MessageStatus.DELIVERED,
-                            snippetType = SnippetType.TEXT
+                            snippetType = SnippetType.TEXT,
+                            creatorId = creatorId,
+                            adminIds = adminIds,
+                            onlyAdminsCanChat = onlyAdminsCanChat,
+                            onlyAdminsCanAddMembers = onlyAdminsCanAddMembers,
+                            avatarUri = avatarUri,
+                            subject = subject,
+                            grade = grade,
+                            section = section,
+                            description = description
                         )
                     }.sortedByDescending { it.timestamp }
 
@@ -453,7 +473,8 @@ class MeshChatRepository(
         attachmentUri: String,
         attachmentName: String,
         attachmentType: String,
-        attachmentSize: String
+        attachmentSize: String,
+        attachmentKey: String? = null
     ): Result<ChatMessage> = withContext(Dispatchers.IO) {
         try {
             val now = getCurrentIsoTimestamp()
@@ -466,7 +487,7 @@ class MeshChatRepository(
                 "📎 $attachmentName ($attachmentSize)"
             }
 
-            val msgPayload = mapOf(
+            val msgPayload = mutableMapOf<String, Any?>(
                 "messageId" to messageId,
                 "threadId" to threadId,
                 "senderId" to senderHandle,
@@ -475,10 +496,15 @@ class MeshChatRepository(
                 "content" to content.trim(),
                 "timestamp" to now,
                 "attachmentUri" to attachmentUri,
+                "attachmentUrl" to attachmentUri,
+                "temporaryDownloadUrl" to attachmentUri,
                 "attachmentName" to attachmentName,
                 "attachmentType" to attachmentType,
                 "attachmentSize" to attachmentSize
             )
+            if (attachmentKey != null) {
+                msgPayload["attachmentKey"] = attachmentKey
+            }
 
             // Write message document
             db.collection("threads")
@@ -506,6 +532,9 @@ class MeshChatRepository(
                 content = content.trim(),
                 timestamp = now,
                 attachmentUri = attachmentUri,
+                attachmentUrl = attachmentUri,
+                temporaryDownloadUrl = attachmentUri,
+                attachmentKey = attachmentKey,
                 attachmentName = attachmentName,
                 attachmentType = attachmentType,
                 attachmentSize = attachmentSize
@@ -645,6 +674,12 @@ class MeshChatRepository(
                 "grade" to grade.trim(),
                 "section" to section.trim(),
                 "subject" to subject.trim(),
+                "description" to description.trim(),
+                "creatorId" to creatorHandle,
+                "adminIds" to listOf(creatorHandle),
+                "onlyAdminsCanChat" to false,
+                "onlyAdminsCanAddMembers" to false,
+                "avatarUri" to null,
                 "isGroup" to true,
                 "category" to "GROUP",
                 "participantIds" to members,
@@ -688,11 +723,203 @@ class MeshChatRepository(
                 lastSenderId = creatorHandle,
                 participantIds = members,
                 messageStatus = MessageStatus.SENT,
-                snippetType = SnippetType.TEXT
+                snippetType = SnippetType.TEXT,
+                creatorId = creatorHandle,
+                adminIds = listOf(creatorHandle),
+                onlyAdminsCanChat = false,
+                onlyAdminsCanAddMembers = false,
+                avatarUri = null,
+                subject = subject.trim(),
+                grade = grade.trim(),
+                section = section.trim(),
+                description = description.trim()
             )
             Result.success(created)
         } catch (e: Exception) {
             Log.e(tag, "Failed to create study circle: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    fun observeThread(threadId: String): Flow<ConversationThread?> = callbackFlow {
+        val registration = db.collection("threads").document(threadId)
+            .addSnapshotListener { doc, error ->
+                if (error != null) {
+                    Log.e(tag, "Error observing thread $threadId: ${error.message}", error)
+                    trySend(null)
+                    return@addSnapshotListener
+                }
+                if (doc != null && doc.exists()) {
+                    @Suppress("UNCHECKED_CAST")
+                    val participants = (doc.get("participantIds") as? List<String>) ?: emptyList()
+                    val lastMessage = doc.getString("lastMessage") ?: ""
+                    val lastSenderId = doc.getString("lastSenderId") ?: ""
+                    val lastSenderName = doc.getString("lastSenderName") ?: ""
+                    val updatedAt = doc.getString("updatedAt") ?: ""
+                    val isGroup = doc.getBoolean("isGroup") == true || doc.getString("category") == "GROUP"
+                    val groupName = doc.getString("groupName")
+                    val rawCategory = doc.getString("category") ?: if (isGroup) "GROUP" else "DIRECT"
+                    val category = when (rawCategory) {
+                        "GROUP" -> ConversationCategory.GROUP
+                        "CHANNEL" -> ConversationCategory.CHANNEL
+                        else -> ConversationCategory.DIRECT
+                    }
+                    val creatorId = doc.getString("creatorId") ?: ""
+                    @Suppress("UNCHECKED_CAST")
+                    val rawAdminIds = (doc.get("adminIds") as? List<String>) ?: emptyList()
+                    val adminIds = if (rawAdminIds.isEmpty() && creatorId.isNotBlank()) listOf(creatorId) else rawAdminIds
+                    val onlyAdminsCanChat = doc.getBoolean("onlyAdminsCanChat") == true
+                    val onlyAdminsCanAddMembers = doc.getBoolean("onlyAdminsCanAddMembers") == true
+                    val avatarUri = doc.getString("avatarUri")
+                    val subject = doc.getString("subject") ?: ""
+                    val grade = doc.getString("grade") ?: ""
+                    val section = doc.getString("section") ?: ""
+                    val description = doc.getString("description") ?: ""
+
+                    val displayName = if (isGroup && !groupName.isNullOrBlank()) groupName else "Direct Chat"
+                    val initials = displayName.take(2).uppercase().ifBlank { "SC" }
+
+                    trySend(
+                        ConversationThread(
+                            id = doc.id,
+                            name = displayName,
+                            lastMessage = lastMessage,
+                            timestamp = formatRelativeTime(updatedAt),
+                            unreadCount = 0,
+                            isOnline = true,
+                            isPinned = false,
+                            isMuted = false,
+                            isVerified = true,
+                            isGroup = isGroup,
+                            category = category,
+                            avatarInitials = initials,
+                            avatarColorStart = if (isGroup) 0xFF0284C7 else 0xFF4F46E5,
+                            avatarColorEnd = if (isGroup) 0xFF38BDF8 else 0xFF2563EB,
+                            lastSenderName = lastSenderName,
+                            lastSenderId = lastSenderId,
+                            participantIds = participants,
+                            messageStatus = MessageStatus.DELIVERED,
+                            snippetType = SnippetType.TEXT,
+                            creatorId = creatorId,
+                            adminIds = adminIds,
+                            onlyAdminsCanChat = onlyAdminsCanChat,
+                            onlyAdminsCanAddMembers = onlyAdminsCanAddMembers,
+                            avatarUri = avatarUri,
+                            subject = subject,
+                            grade = grade,
+                            section = section,
+                            description = description
+                        )
+                    )
+                } else {
+                    trySend(null)
+                }
+            }
+        awaitClose { registration.remove() }
+    }.flowOn(Dispatchers.IO)
+
+    suspend fun updateGroupSettings(
+        threadId: String,
+        name: String,
+        description: String,
+        subject: String,
+        grade: String,
+        section: String
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val updates = mapOf(
+                "groupName" to name.trim(),
+                "description" to description.trim(),
+                "subject" to subject.trim(),
+                "grade" to grade.trim(),
+                "section" to section.trim(),
+                "updatedAt" to getCurrentIsoTimestamp()
+            )
+            db.collection("threads").document(threadId).update(updates).await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to update group settings: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun updateGroupAvatar(
+        threadId: String,
+        avatarUri: String
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val updates = mapOf(
+                "avatarUri" to avatarUri,
+                "updatedAt" to getCurrentIsoTimestamp()
+            )
+            db.collection("threads").document(threadId).update(updates).await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to update group avatar: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun updateGroupPermissions(
+        threadId: String,
+        onlyAdminsCanChat: Boolean,
+        onlyAdminsCanAddMembers: Boolean
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val updates = mapOf(
+                "onlyAdminsCanChat" to onlyAdminsCanChat,
+                "onlyAdminsCanAddMembers" to onlyAdminsCanAddMembers,
+                "updatedAt" to getCurrentIsoTimestamp()
+            )
+            db.collection("threads").document(threadId).update(updates).await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to update group permissions: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun setGroupMemberAdmin(
+        threadId: String,
+        memberHandle: String,
+        makeAdmin: Boolean
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val cleanHandle = memberHandle.trim().removePrefix("@").lowercase()
+            val updateAction = if (makeAdmin) {
+                FieldValue.arrayUnion(cleanHandle)
+            } else {
+                FieldValue.arrayRemove(cleanHandle)
+            }
+            db.collection("threads").document(threadId).update(
+                mapOf(
+                    "adminIds" to updateAction,
+                    "updatedAt" to getCurrentIsoTimestamp()
+                )
+            ).await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to change member admin status: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun removeMemberFromGroup(
+        threadId: String,
+        memberHandle: String
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val cleanHandle = memberHandle.trim().removePrefix("@").lowercase()
+            db.collection("threads").document(threadId).update(
+                mapOf(
+                    "participantIds" to FieldValue.arrayRemove(cleanHandle),
+                    "adminIds" to FieldValue.arrayRemove(cleanHandle),
+                    "updatedAt" to getCurrentIsoTimestamp()
+                )
+            ).await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to remove member from group: ${e.message}", e)
             Result.failure(e)
         }
     }

@@ -36,6 +36,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import com.example.model.ConversationThread
 import com.example.model.MessageStatus
 import com.example.model.SnippetType
@@ -82,12 +84,23 @@ fun ChatItemRow(
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = thread.avatarInitials,
-                    color = Color.White,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                if (!thread.avatarUri.isNullOrBlank()) {
+                    AsyncImage(
+                        model = thread.avatarUri,
+                        contentDescription = thread.name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(52.dp)
+                            .clip(CircleShape)
+                    )
+                } else {
+                    Text(
+                        text = thread.avatarInitials,
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
 
             // Online indicator dot

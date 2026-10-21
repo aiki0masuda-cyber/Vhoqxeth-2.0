@@ -44,8 +44,41 @@ data class ConversationThread(
     val lastSenderId: String? = null,
     val participantIds: List<String> = emptyList(),
     val messageStatus: MessageStatus = MessageStatus.READ,
-    val snippetType: SnippetType = SnippetType.TEXT
-)
+    val snippetType: SnippetType = SnippetType.TEXT,
+    val creatorId: String = "",
+    val adminIds: List<String> = emptyList(),
+    val onlyAdminsCanChat: Boolean = false,
+    val onlyAdminsCanAddMembers: Boolean = false,
+    val avatarUri: String? = null,
+    val subject: String = "",
+    val grade: String = "",
+    val section: String = "",
+    val description: String = ""
+) {
+    fun isAdmin(userHandle: String): Boolean {
+        val h = userHandle.trim().removePrefix("@").lowercase()
+        val c = creatorId.trim().removePrefix("@").lowercase()
+        return (c.isNotBlank() && h == c) || adminIds.any { it.trim().removePrefix("@").lowercase() == h }
+    }
+
+    fun isCreator(userHandle: String): Boolean {
+        val h = userHandle.trim().removePrefix("@").lowercase()
+        val c = creatorId.trim().removePrefix("@").lowercase()
+        return c.isNotBlank() && h == c
+    }
+
+    fun canUserChat(userHandle: String): Boolean {
+        return !isGroup || !onlyAdminsCanChat || isAdmin(userHandle)
+    }
+
+    fun canUserAddMembers(userHandle: String): Boolean {
+        return !isGroup || !onlyAdminsCanAddMembers || isAdmin(userHandle)
+    }
+
+    fun canUserEditGroupInfo(userHandle: String): Boolean {
+        return !isGroup || isAdmin(userHandle)
+    }
+}
 
 data class ActiveContact(
     val id: String = "",

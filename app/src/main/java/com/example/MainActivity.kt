@@ -34,6 +34,7 @@ import com.example.ui.legal.LegalConsentScreen
 import com.example.ui.splash.SplashScreen
 import com.example.ui.theme.DavCanvasDark
 import com.example.ui.theme.DavInfoExchangeTheme
+import com.example.util.configureAppCheck
 import kotlinx.coroutines.launch
 
 enum class AppScreen {
@@ -47,6 +48,7 @@ enum class AppScreen {
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        configureAppCheck(this, intent)
         enableEdgeToEdge()
         setContent {
             DavInfoExchangeTheme {
@@ -128,6 +130,7 @@ fun DavInfoExchangeApp() {
             AppScreen.AUTH -> {
                 AuthGatewayScreen(
                     onAuthenticated = { profile ->
+                        sessionManager.setTermsAccepted(true)
                         sessionManager.saveSession(profile)
                         currentUserProfile = profile
                         currentScreen = AppScreen.CHAT_LIST

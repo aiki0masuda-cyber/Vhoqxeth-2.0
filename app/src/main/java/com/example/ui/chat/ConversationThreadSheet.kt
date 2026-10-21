@@ -37,17 +37,24 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FolderZip
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -55,15 +62,20 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import com.example.data.B2UploadManager
+import com.example.model.UploadState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
@@ -72,6 +84,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import com.example.ai.AiImageGeneratorEngine
 import com.example.data.MeshChatRepository
 import com.example.model.ChatMessage
 import com.example.model.ConversationThread
@@ -88,14 +102,17 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 
 data class SelectedFileAttachment(
     val uri: Uri,
     val name: String,
     val size: String,
-    val type: String
+    val type: String,
+    val sizeBytes: Long = 0L
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConversationThreadSheet(
     thread: ConversationThread,
@@ -111,6 +128,16 @@ fun ConversationThreadSheet(
     var pendingAttachment by remember { mutableStateOf<SelectedFileAttachment?>(null) }
     var isSending by remember { mutableStateOf(false) }
     var showAddMemberDialog by remember { mutableStateOf(false) }
+    var showAiImageDialog by remember { mutableStateOf(false) }
+    var showGroupInfoSheet by remember { mutableStateOf(false) }
+
+    // Live thread stream from Firestore
+    val liveThreadState by chatRepository.observeThread(thread.id).collectAsState(initial = thread)
+    val currentThread = liveThreadState ?: thread
+
+    val currentHandle = currentUser.customUserId.trim().removePrefix("@").lowercase()
+    val canUserChat = currentThread.canUserChat(currentHandle)
+    val canUserAddMembers = currentThread.canUserAddMembers(currentHandle)
 
     // Live messages stream from Firestore
     val messagesFlow = remember(thread.id) {
@@ -118,14 +145,21 @@ fun ConversationThreadSheet(
     }
     val messages by messagesFlow.collectAsState(initial = emptyList())
 
-    // Auto-scroll to bottom on new messages
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.size - 1)
-        }
+    val b2UploadManager = remember { B2UploadManager() }
+    val pendingUploads = remember { mutableStateListOf<ChatMessage>() }
+    val uploadStates = remember { mutableStateMapOf<String, UploadState>() }
+
+    // Combined live stream: Firestore confirmed messages + in-memory optimistic upload placeholders
+    val combinedMessages = remember(messages, pendingUploads.toList()) {
+        messages + pendingUploads
     }
 
-    val currentHandle = currentUser.customUserId.trim().removePrefix("@").lowercase()
+    // Auto-scroll to bottom on new messages or new upload placeholder
+    LaunchedEffect(combinedMessages.size) {
+        if (combinedMessages.isNotEmpty()) {
+            listState.animateScrollToItem(combinedMessages.size - 1)
+        }
+    }
 
     // Universal System Document Picker Launcher (Supports all file types: PDF, docs, images, zips, spreadsheets)
     val documentPickerLauncher = rememberLauncherForActivityResult(
@@ -164,6 +198,7 @@ fun ConversationThreadSheet(
                 val inferredType = when {
                     lower.endsWith(".pdf") -> "PDF"
                     lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".webp") -> "IMAGE"
+                    lower.endsWith(".mp4") || lower.endsWith(".mov") || lower.endsWith(".mkv") || lower.endsWith(".webm") || lower.endsWith(".avi") -> "VIDEO"
                     lower.endsWith(".doc") || lower.endsWith(".docx") || lower.endsWith(".txt") -> "DOC"
                     lower.endsWith(".xls") || lower.endsWith(".xlsx") || lower.endsWith(".csv") -> "SHEET"
                     lower.endsWith(".zip") || lower.endsWith(".rar") || lower.endsWith(".tar") -> "ARCHIVE"
@@ -174,7 +209,8 @@ fun ConversationThreadSheet(
                     uri = uri,
                     name = displayName,
                     size = formattedSize,
-                    type = inferredType
+                    type = inferredType,
+                    sizeBytes = sizeBytes
                 )
             } catch (e: Exception) {
                 Toast.makeText(context, "Could not load file: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -203,10 +239,22 @@ fun ConversationThreadSheet(
                 modifier = Modifier
                     .size(44.dp)
                     .clip(CircleShape)
-                    .background(if (thread.isGroup) DavAccentSky else DavBrandRoyalBlue),
+                    .background(if (currentThread.isGroup) DavAccentSky else DavBrandRoyalBlue)
+                    .clickable(enabled = currentThread.isGroup) {
+                        showGroupInfoSheet = true
+                    },
                 contentAlignment = Alignment.Center
             ) {
-                if (thread.isGroup) {
+                if (!currentThread.avatarUri.isNullOrBlank()) {
+                    AsyncImage(
+                        model = currentThread.avatarUri,
+                        contentDescription = "Avatar",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                    )
+                } else if (currentThread.isGroup) {
                     Icon(
                         imageVector = Icons.Default.Groups,
                         contentDescription = "Group",
@@ -215,7 +263,7 @@ fun ConversationThreadSheet(
                     )
                 } else {
                     Text(
-                        text = thread.avatarInitials.ifBlank { "DAV" },
+                        text = currentThread.avatarInitials.ifBlank { "DAV" },
                         color = Color.White,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold
@@ -225,10 +273,16 @@ fun ConversationThreadSheet(
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            Column(modifier = Modifier.weight(1f)) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(enabled = currentThread.isGroup) {
+                        showGroupInfoSheet = true
+                    }
+            ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = thread.name,
+                        text = currentThread.name,
                         color = DavTextPrimary,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
@@ -236,7 +290,7 @@ fun ConversationThreadSheet(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )
-                    if (thread.isFaculty) {
+                    if (currentThread.isFaculty) {
                         Spacer(modifier = Modifier.width(6.dp))
                         Box(
                             modifier = Modifier
@@ -255,9 +309,11 @@ fun ConversationThreadSheet(
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (thread.isGroup) {
+                    if (currentThread.isGroup) {
                         Text(
-                            text = "${thread.participantIds.size} members • Collaborative Circle",
+                            text = "${currentThread.participantIds.size} members" +
+                                    (if (currentThread.subject.isNotBlank()) " • ${currentThread.subject}" else "") +
+                                    (if (currentThread.onlyAdminsCanChat) " • Admins only" else ""),
                             color = DavAccentSky,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Medium
@@ -279,8 +335,22 @@ fun ConversationThreadSheet(
                 }
             }
 
-            // If it is a group, show "Add Members" action button
-            if (thread.isGroup) {
+            // Group Info / Settings button
+            if (currentThread.isGroup) {
+                IconButton(
+                    onClick = { showGroupInfoSheet = true },
+                    modifier = Modifier.testTag("group_info_settings_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = "Group Info & Settings",
+                        tint = DavBrandRoyalBlue
+                    )
+                }
+            }
+
+            // If it is a group and user has permission to add members, show "Add Members" action button
+            if (currentThread.isGroup && canUserAddMembers) {
                 IconButton(
                     onClick = { showAddMemberDialog = true },
                     modifier = Modifier.testTag("add_group_member_button")
@@ -373,13 +443,76 @@ fun ConversationThreadSheet(
                 }
             }
 
-            items(messages, key = { it.messageId }) { msg ->
+            items(combinedMessages, key = { it.messageId }) { msg ->
                 val isMe = msg.senderId.lowercase() == currentHandle
-                MessageBubble(
-                    message = msg,
-                    isMe = isMe,
-                    context = context
-                )
+                if (msg.isUploadingPlaceholder) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.CenterEnd
+                    ) {
+                        UploadingPlaceholderBubble(
+                            message = msg,
+                            uploadState = uploadStates[msg.messageId],
+                            onCancel = {
+                                b2UploadManager.cancelUpload(msg.messageId)
+                                pendingUploads.removeAll { it.messageId == msg.messageId }
+                                uploadStates.remove(msg.messageId)
+                            },
+                            onRetry = {
+                                coroutineScope.launch {
+                                    val attUri = Uri.parse(msg.attachmentUri ?: "")
+                                    val retryResult = b2UploadManager.executeCompleteUploadWithKey(
+                                        uploadId = msg.messageId,
+                                        contentResolver = context.contentResolver,
+                                        fileUri = attUri,
+                                        filename = msg.attachmentName ?: "attachment",
+                                        contentType = when (msg.attachmentType) {
+                                            "IMAGE" -> "image/jpeg"
+                                            "VIDEO" -> "video/mp4"
+                                            "PDF" -> "application/pdf"
+                                            else -> "application/octet-stream"
+                                        },
+                                        fileSizeBytes = 0L,
+                                        onStateChanged = { st ->
+                                            uploadStates[msg.messageId] = st
+                                            if (st is UploadState.Uploading) {
+                                                val idx = pendingUploads.indexOfFirst { it.messageId == msg.messageId }
+                                                if (idx != -1) {
+                                                    pendingUploads[idx] = pendingUploads[idx].copy(uploadProgress = st.progress)
+                                                }
+                                            }
+                                        }
+                                    )
+                                    val (finalUrl, finalKey) = if (retryResult.isSuccess) {
+                                        val completion = retryResult.getOrThrow()
+                                        completion.downloadUrl to completion.key
+                                    } else {
+                                        (msg.attachmentUri ?: "") to null
+                                    }
+                                    chatRepository.sendFileMessage(
+                                        threadId = currentThread.id,
+                                        senderProfile = currentUser,
+                                        content = msg.content,
+                                        attachmentUri = finalUrl,
+                                        attachmentName = msg.attachmentName ?: "File",
+                                        attachmentType = msg.attachmentType ?: "FILE",
+                                        attachmentSize = msg.attachmentSize ?: "",
+                                        attachmentKey = finalKey
+                                    )
+                                    pendingUploads.removeAll { it.messageId == msg.messageId }
+                                    uploadStates.remove(msg.messageId)
+                                }
+                            }
+                        )
+                    }
+                } else {
+                    MessageBubble(
+                        message = msg,
+                        isMe = isMe,
+                        context = context,
+                        b2UploadManager = b2UploadManager
+                    )
+                }
             }
 
             item {
@@ -436,114 +569,222 @@ fun ConversationThreadSheet(
             HorizontalDivider(color = DavBorder, thickness = 0.5.dp)
         }
 
-        // Bottom Message & Attachment Composer
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(Color.White)
-                .padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Attachment Button (Universal Document Picker)
-            IconButton(
-                onClick = {
-                    documentPickerLauncher.launch(arrayOf("*/*"))
-                },
+        if (!canUserChat) {
+            Box(
                 modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(DavSurfaceElevated)
-                    .testTag("attach_file_button")
+                    .fillMaxWidth()
+                    .background(Color.White)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Default.AttachFile,
-                    contentDescription = "Attach File / Document",
-                    tint = DavBrandRoyalBlue,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            OutlinedTextField(
-                value = inputMessage,
-                onValueChange = { inputMessage = it },
-                placeholder = {
-                    Text(
-                        text = if (pendingAttachment != null) "Add a caption (optional)..." else "Type a message...",
-                        color = DavTextMuted,
-                        fontSize = 14.sp
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(DavSurfaceElevated)
+                        .border(1.dp, DavBorder, RoundedCornerShape(12.dp))
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = null,
+                        tint = DavBrandRoyalBlue,
+                        modifier = Modifier.size(16.dp)
                     )
-                },
-                singleLine = false,
-                maxLines = 4,
-                shape = RoundedCornerShape(20.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = DavSurfaceElevated,
-                    unfocusedContainerColor = DavSurfaceElevated,
-                    focusedBorderColor = DavBrandRoyalBlue,
-                    unfocusedBorderColor = DavBorder,
-                    focusedTextColor = DavTextPrimary,
-                    unfocusedTextColor = DavTextPrimary
-                ),
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Only group admins can send messages to this group",
+                        color = DavTextSecondary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        } else {
+            // Bottom Message & Attachment Composer
+            Row(
                 modifier = Modifier
-                    .weight(1f)
-                    .testTag("chat_message_input_field")
-            )
+                    .fillMaxWidth()
+                    .background(Color.White)
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Attachment Button (Universal Document Picker)
+                IconButton(
+                    onClick = {
+                        documentPickerLauncher.launch(arrayOf("*/*"))
+                    },
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(DavSurfaceElevated)
+                        .testTag("attach_file_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AttachFile,
+                        contentDescription = "Attach File / Document",
+                        tint = DavBrandRoyalBlue,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
 
-            Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(6.dp))
 
-            val canSend = (inputMessage.trim().isNotBlank() || pendingAttachment != null) && !isSending
+                // AI Image Generation Sparkle Button
+                IconButton(
+                    onClick = { showAiImageDialog = true },
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(DavAccentSky.copy(alpha = 0.15f))
+                        .testTag("ai_image_sparkle_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AutoAwesome,
+                        contentDescription = "Generate Study Diagram with AI",
+                        tint = DavBrandRoyalBlue,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
 
-            IconButton(
-                onClick = {
-                    if (canSend) {
-                        isSending = true
-                        val text = inputMessage.trim()
-                        val att = pendingAttachment
-                        inputMessage = ""
-                        pendingAttachment = null
+                Spacer(modifier = Modifier.width(6.dp))
 
-                        coroutineScope.launch {
+                OutlinedTextField(
+                    value = inputMessage,
+                    onValueChange = { inputMessage = it },
+                    placeholder = {
+                        Text(
+                            text = if (pendingAttachment != null) "Add a caption (optional)..." else "Type a message...",
+                            color = DavTextMuted,
+                            fontSize = 14.sp
+                        )
+                    },
+                    singleLine = false,
+                    maxLines = 4,
+                    shape = RoundedCornerShape(20.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = DavSurfaceElevated,
+                        unfocusedContainerColor = DavSurfaceElevated,
+                        focusedBorderColor = DavBrandRoyalBlue,
+                        unfocusedBorderColor = DavBorder,
+                        focusedTextColor = DavTextPrimary,
+                        unfocusedTextColor = DavTextPrimary
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("chat_message_input_field")
+                )
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                val canSend = (inputMessage.trim().isNotBlank() || pendingAttachment != null) && !isSending
+
+                IconButton(
+                    onClick = {
+                        if (canSend) {
+                            val text = inputMessage.trim()
+                            val att = pendingAttachment
+                            inputMessage = ""
+                            pendingAttachment = null
+
                             if (att != null) {
-                                chatRepository.sendFileMessage(
-                                    threadId = thread.id,
-                                    senderProfile = currentUser,
+                                val tempId = "upload_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}"
+                                val placeholder = ChatMessage(
+                                    messageId = tempId,
+                                    threadId = currentThread.id,
+                                    senderId = currentHandle,
+                                    senderName = currentUser.displayName,
                                     content = text,
+                                    timestamp = "Uploading...",
                                     attachmentUri = att.uri.toString(),
                                     attachmentName = att.name,
                                     attachmentType = att.type,
-                                    attachmentSize = att.size
+                                    attachmentSize = att.size,
+                                    isUploadingPlaceholder = true,
+                                    uploadProgress = 0f
                                 )
+                                pendingUploads.add(placeholder)
+
+                                coroutineScope.launch {
+                                    val uploadResult = b2UploadManager.executeCompleteUploadWithKey(
+                                        uploadId = tempId,
+                                        contentResolver = context.contentResolver,
+                                        fileUri = att.uri,
+                                        filename = att.name,
+                                        contentType = when (att.type) {
+                                            "IMAGE" -> "image/jpeg"
+                                            "VIDEO" -> "video/mp4"
+                                            "PDF" -> "application/pdf"
+                                            else -> "application/octet-stream"
+                                        },
+                                        fileSizeBytes = att.sizeBytes,
+                                        onStateChanged = { state ->
+                                            uploadStates[tempId] = state
+                                            if (state is UploadState.Uploading) {
+                                                val idx = pendingUploads.indexOfFirst { it.messageId == tempId }
+                                                if (idx != -1) {
+                                                    pendingUploads[idx] = pendingUploads[idx].copy(uploadProgress = state.progress)
+                                                }
+                                            }
+                                        }
+                                    )
+
+                                    val (finalDownloadUrl, finalKey) = if (uploadResult.isSuccess) {
+                                        val completion = uploadResult.getOrThrow()
+                                        completion.downloadUrl to completion.key
+                                    } else {
+                                        // Fallback to local device URI if edge worker is offline
+                                        att.uri.toString() to null
+                                    }
+
+                                    chatRepository.sendFileMessage(
+                                        threadId = currentThread.id,
+                                        senderProfile = currentUser,
+                                        content = text,
+                                        attachmentUri = finalDownloadUrl,
+                                        attachmentName = att.name,
+                                        attachmentType = att.type,
+                                        attachmentSize = att.size,
+                                        attachmentKey = finalKey
+                                    )
+
+                                    pendingUploads.removeAll { it.messageId == tempId }
+                                    uploadStates.remove(tempId)
+                                }
                             } else {
-                                chatRepository.sendMessage(thread.id, currentUser, text)
+                                isSending = true
+                                coroutineScope.launch {
+                                    chatRepository.sendMessage(currentThread.id, currentUser, text)
+                                    isSending = false
+                                }
                             }
-                            isSending = false
                         }
+                    },
+                    enabled = canSend,
+                    modifier = Modifier
+                        .size(46.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (canSend) DavBrandRoyalBlue else Color(0xFFE2E8F0)
+                        )
+                        .testTag("send_message_button")
+                ) {
+                    if (isSending) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Send,
+                            contentDescription = "Send Message",
+                            tint = if (canSend) Color.White else Color(0xFF94A3B8),
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
-                },
-                enabled = canSend,
-                modifier = Modifier
-                    .size(46.dp)
-                    .clip(CircleShape)
-                    .background(
-                        if (canSend) DavBrandRoyalBlue else Color(0xFFE2E8F0)
-                    )
-                    .testTag("send_message_button")
-            ) {
-                if (isSending) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        color = Color.White,
-                        strokeWidth = 2.dp
-                    )
-                } else {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Send,
-                        contentDescription = "Send Message",
-                        tint = if (canSend) Color.White else Color(0xFF94A3B8),
-                        modifier = Modifier.size(20.dp)
-                    )
                 }
             }
         }
@@ -552,7 +793,7 @@ fun ConversationThreadSheet(
     // Modal: Add members to this group
     if (showAddMemberDialog) {
         AddMemberDialog(
-            thread = thread,
+            thread = currentThread,
             currentUser = currentUser,
             chatRepository = chatRepository,
             onDismiss = { showAddMemberDialog = false },
@@ -561,17 +802,86 @@ fun ConversationThreadSheet(
             }
         )
     }
+
+    // Modal: AI Study Illustration Generator
+    if (showAiImageDialog) {
+        val suggestedPrompt = if (currentThread.isGroup && currentThread.subject.isNotBlank()) {
+            "Educational concept illustration explaining ${currentThread.subject}"
+        } else ""
+
+        AiGenerateImageDialog(
+            initialPrompt = suggestedPrompt,
+            title = "Generate Study Diagram with AI",
+            confirmButtonLabel = "Send into Chat",
+            onDismiss = { showAiImageDialog = false },
+            onImageAccepted = { bitmap, prompt ->
+                coroutineScope.launch {
+                    val cachedUri = AiImageGeneratorEngine.saveBitmapToLocalCache(
+                        context = context,
+                        bitmap = bitmap,
+                        prefix = "chat_ai_${currentThread.id}"
+                    )
+                    chatRepository.sendFileMessage(
+                        threadId = currentThread.id,
+                        senderProfile = currentUser,
+                        content = prompt,
+                        attachmentUri = cachedUri.toString(),
+                        attachmentName = "AI Diagram: ${prompt.take(28)}...",
+                        attachmentType = "IMAGE",
+                        attachmentSize = "PNG • AI Generated"
+                    )
+                }
+            }
+        )
+    }
+
+    // Modal Bottom Sheet: Group Info & Settings
+    if (showGroupInfoSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showGroupInfoSheet = false },
+            containerColor = Color.White
+        ) {
+            GroupInfoSettingsSheet(
+                initialThread = currentThread,
+                currentUser = currentUser,
+                chatRepository = chatRepository,
+                onAddMembersRequested = {
+                    showGroupInfoSheet = false
+                    showAddMemberDialog = true
+                },
+                onDismiss = { showGroupInfoSheet = false }
+            )
+        }
+    }
 }
 
 @Composable
 private fun MessageBubble(
     message: ChatMessage,
     isMe: Boolean,
-    context: Context
+    context: Context,
+    b2UploadManager: B2UploadManager? = null
 ) {
     val bubbleColor = if (isMe) DavBrandRoyalBlue else Color.White
     val textColor = if (isMe) Color.White else DavTextPrimary
     val alignment = if (isMe) Alignment.End else Alignment.Start
+
+    // Proactively verify and resolve temporary download URL for private Backblaze B2 bucket
+    var activeMediaUrl by remember(message.messageId, message.resolvedAttachmentUrl) {
+        mutableStateOf(message.resolvedAttachmentUrl ?: "")
+    }
+
+    LaunchedEffect(message.messageId, message.attachmentKey) {
+        if (!message.attachmentKey.isNullOrBlank() && b2UploadManager != null) {
+            val resolved = b2UploadManager.getOrRefreshDownloadUrl(
+                key = message.attachmentKey,
+                currentUrl = message.resolvedAttachmentUrl
+            )
+            if (resolved.isNotBlank() && resolved != activeMediaUrl) {
+                activeMediaUrl = resolved
+            }
+        }
+    }
 
     val timeString = try {
         val format = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
@@ -641,6 +951,39 @@ private fun MessageBubble(
                     val attName = message.attachmentName ?: "Attached File"
                     val attType = message.attachmentType ?: "FILE"
                     val attSize = message.attachmentSize ?: ""
+                    val effectiveMediaUri = activeMediaUrl.ifBlank { message.resolvedAttachmentUrl ?: "" }
+
+                    if (attType == "IMAGE" && effectiveMediaUri.isNotBlank()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(200.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .border(
+                                    1.dp,
+                                    if (isMe) Color.White.copy(alpha = 0.3f) else DavBorder,
+                                    RoundedCornerShape(10.dp)
+                                )
+                                .clickable {
+                                    try {
+                                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                                            setDataAndType(Uri.parse(effectiveMediaUri), "image/*")
+                                            flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                        }
+                                        context.startActivity(Intent.createChooser(intent, "View Image"))
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Cannot open image: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                        ) {
+                            AsyncImage(
+                                model = effectiveMediaUri,
+                                contentDescription = attName,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    }
 
                     Box(
                         modifier = Modifier
@@ -653,10 +996,16 @@ private fun MessageBubble(
                                 RoundedCornerShape(10.dp)
                             )
                             .clickable {
-                                if (!message.attachmentUri.isNullOrBlank()) {
+                                if (effectiveMediaUri.isNotBlank()) {
                                     try {
                                         val intent = Intent(Intent.ACTION_VIEW).apply {
-                                            setDataAndType(Uri.parse(message.attachmentUri), "*/*")
+                                            val mime = when (attType) {
+                                                "VIDEO" -> "video/*"
+                                                "PDF" -> "application/pdf"
+                                                "IMAGE" -> "image/*"
+                                                else -> "*/*"
+                                            }
+                                            setDataAndType(Uri.parse(effectiveMediaUri), mime)
                                             flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
                                         }
                                         context.startActivity(Intent.createChooser(intent, "Open $attName"))
@@ -735,6 +1084,7 @@ private fun getAttachmentIcon(type: String): ImageVector {
     return when (type.uppercase()) {
         "PDF" -> Icons.Default.PictureAsPdf
         "IMAGE" -> Icons.Default.Image
+        "VIDEO" -> Icons.Default.Videocam
         "DOC" -> Icons.Default.Description
         "SHEET" -> Icons.Default.TableChart
         "ARCHIVE" -> Icons.Default.FolderZip

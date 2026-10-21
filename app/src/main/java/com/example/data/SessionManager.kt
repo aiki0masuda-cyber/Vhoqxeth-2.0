@@ -19,7 +19,7 @@ class SessionManager(context: Context) {
     }
 
     fun setTermsAccepted(accepted: Boolean = true) {
-        prefs.edit().putBoolean(KEY_TERMS_ACCEPTED, accepted).apply()
+        prefs.edit().putBoolean(KEY_TERMS_ACCEPTED, accepted).commit()
     }
 
     fun isLoggedIn(): Boolean {
@@ -32,6 +32,13 @@ class SessionManager(context: Context) {
         val customUserId = prefs.getString(KEY_CUSTOM_USER_ID, "") ?: ""
         val displayName = prefs.getString(KEY_DISPLAY_NAME, "") ?: customUserId
         val userId = prefs.getString(KEY_USER_ID, "") ?: customUserId
+        val role = prefs.getString(KEY_ROLE, UserProfile.ROLE_STUDENT) ?: UserProfile.ROLE_STUDENT
+        val grade = prefs.getString(KEY_GRADE, "") ?: ""
+        val section = prefs.getString(KEY_SECTION, "") ?: ""
+        val subject = prefs.getString(KEY_SUBJECT, "") ?: ""
+        val department = prefs.getString(KEY_DEPARTMENT, "") ?: ""
+        val employeeId = prefs.getString(KEY_EMPLOYEE_ID, "") ?: ""
+        val designation = prefs.getString(KEY_DESIGNATION, "") ?: ""
         val passwordHash = prefs.getString(KEY_PASSWORD_HASH, "") ?: ""
         val passwordSalt = prefs.getString(KEY_PASSWORD_SALT, "") ?: ""
         val firstName = prefs.getString(KEY_FIRST_NAME, "") ?: ""
@@ -47,6 +54,13 @@ class SessionManager(context: Context) {
             userId = userId,
             displayName = displayName,
             customUserId = customUserId,
+            role = role,
+            grade = grade,
+            section = section,
+            subject = subject,
+            department = department,
+            employeeId = employeeId,
+            designation = designation,
             passwordHash = passwordHash,
             passwordSalt = passwordSalt,
             firstName = firstName,
@@ -61,23 +75,29 @@ class SessionManager(context: Context) {
     }
 
     fun saveSession(userProfile: UserProfile) {
-        prefs.edit().apply {
-            putBoolean(KEY_IS_LOGGED_IN, true)
-            putString(KEY_USER_ID, userProfile.userId.ifBlank { userProfile.customUserId })
-            putString(KEY_CUSTOM_USER_ID, userProfile.customUserId)
-            putString(KEY_DISPLAY_NAME, userProfile.displayName)
-            putString(KEY_PASSWORD_HASH, userProfile.passwordHash)
-            putString(KEY_PASSWORD_SALT, userProfile.passwordSalt)
-            putString(KEY_FIRST_NAME, userProfile.firstName)
-            putString(KEY_LAST_NAME, userProfile.lastName)
-            putString(KEY_DOB, userProfile.dateOfBirth)
-            putString(KEY_DESCRIPTION, userProfile.description)
-            putBoolean(KEY_COMPLETED_OPTIONAL_SETUP, userProfile.hasCompletedOptionalSetup)
-            putString(KEY_CURRENT_IP, userProfile.currentIp)
-            putStringSet(KEY_ASSOCIATED_IPS, userProfile.associatedIps.toSet())
-            putString(KEY_CREATED_AT, userProfile.createdAt)
-            apply()
-        }
+        val editor = prefs.edit()
+        editor.putBoolean(KEY_IS_LOGGED_IN, true)
+        editor.putString(KEY_USER_ID, userProfile.userId.ifBlank { userProfile.customUserId })
+        editor.putString(KEY_CUSTOM_USER_ID, userProfile.customUserId)
+        editor.putString(KEY_DISPLAY_NAME, userProfile.displayName)
+        editor.putString(KEY_ROLE, userProfile.role)
+        editor.putString(KEY_GRADE, userProfile.grade)
+        editor.putString(KEY_SECTION, userProfile.section)
+        editor.putString(KEY_SUBJECT, userProfile.subject)
+        editor.putString(KEY_DEPARTMENT, userProfile.department)
+        editor.putString(KEY_EMPLOYEE_ID, userProfile.employeeId)
+        editor.putString(KEY_DESIGNATION, userProfile.designation)
+        editor.putString(KEY_PASSWORD_HASH, userProfile.passwordHash)
+        editor.putString(KEY_PASSWORD_SALT, userProfile.passwordSalt)
+        editor.putString(KEY_FIRST_NAME, userProfile.firstName)
+        editor.putString(KEY_LAST_NAME, userProfile.lastName)
+        editor.putString(KEY_DOB, userProfile.dateOfBirth)
+        editor.putString(KEY_DESCRIPTION, userProfile.description)
+        editor.putBoolean(KEY_COMPLETED_OPTIONAL_SETUP, userProfile.hasCompletedOptionalSetup)
+        editor.putString(KEY_CURRENT_IP, userProfile.currentIp)
+        editor.putStringSet(KEY_ASSOCIATED_IPS, userProfile.associatedIps.toSet())
+        editor.putString(KEY_CREATED_AT, userProfile.createdAt)
+        editor.commit()
     }
 
     fun updateCurrentIp(newIp: String) {
@@ -85,20 +105,18 @@ class SessionManager(context: Context) {
         val existingIps = prefs.getStringSet(KEY_ASSOCIATED_IPS, emptySet())?.toMutableSet() ?: mutableSetOf()
         existingIps.add(newIp)
 
-        prefs.edit().apply {
-            putString(KEY_CURRENT_IP, newIp)
-            putStringSet(KEY_ASSOCIATED_IPS, existingIps)
-            apply()
-        }
+        prefs.edit()
+            .putString(KEY_CURRENT_IP, newIp)
+            .putStringSet(KEY_ASSOCIATED_IPS, existingIps)
+            .commit()
     }
 
     fun clearSession() {
         val accepted = hasAcceptedTerms()
-        prefs.edit().apply {
-            clear()
-            putBoolean(KEY_TERMS_ACCEPTED, accepted)
-            apply()
-        }
+        prefs.edit()
+            .clear()
+            .putBoolean(KEY_TERMS_ACCEPTED, accepted)
+            .commit()
     }
 
     companion object {
@@ -108,6 +126,13 @@ class SessionManager(context: Context) {
         private const val KEY_USER_ID = "user_id"
         private const val KEY_CUSTOM_USER_ID = "custom_user_id"
         private const val KEY_DISPLAY_NAME = "display_name"
+        private const val KEY_ROLE = "role"
+        private const val KEY_GRADE = "grade"
+        private const val KEY_SECTION = "section"
+        private const val KEY_SUBJECT = "subject"
+        private const val KEY_DEPARTMENT = "department"
+        private const val KEY_EMPLOYEE_ID = "employee_id"
+        private const val KEY_DESIGNATION = "designation"
         private const val KEY_PASSWORD_HASH = "password_hash"
         private const val KEY_PASSWORD_SALT = "password_salt"
         private const val KEY_FIRST_NAME = "first_name"

@@ -1,149 +1,119 @@
-# DAV InfoExchange — Group Collaboration, Universal File Attachments & Clean Scholastic Light Theme
+# Private Backblaze B2 Pre-Signed Download Architecture
 
-Transform **DAV InfoExchange** into a collaborative scholastic exchange by enabling any user to create groups, select and add contacts to existing or new groups, send all file attachment types via the Android system document picker, and switch the application visual design to a clean scholastic **Light Theme** with pure white, royal blue, and slate accents.
+A secure, zero-cost architecture updating the Cloudflare Worker and Android client to support Private Backblaze B2 buckets using 24-hour pre-signed GET download URLs, object key persistence, in-memory token caching, and automated UI token refreshes.
 
----
-
-## User Review & Critical Decisions
+### User Review & Critical Decisions
 
 > [!IMPORTANT]
-> The following user-confirmed specifications guide this implementation:
-> 1. **Group Creation & Member Management**: Any user (Student or Teacher) can create groups and add existing contacts directly during creation or at any time from group details.
-> 2. **File Attachments**: Supported for all file types (PDFs, study notes, images, documents, audio, spreadsheets, archives) using the zero-permission Android system document picker (`ActivityResultContracts.OpenDocument`).
-> 3. **Clean Scholastic Light Theme**: Default posture set to crisp scholastic white (`#FFFFFF` / `#F8FAFC`), deep navy text (`#0F172A`), royal blue brand accent (`#1E2A78`), sky blue highlights (`#0284C7`), and clean slate borders (`#E2E8F0`).
+> The following architectural decisions were aligned based on your confirmed specifications:
+> - **Storage Key Tracking**: The unique S3 object key (`chat-attachments/timestamp_filename`) is stored directly in `ChatMessage` as `attachmentKey: String?` alongside Firestore records.
+> - **In-Memory URL Cache**: An in-memory cache (`ConcurrentHashMap<String, CachedSignedUrl>`) stores refreshed URLs with expiration timestamps, preventing redundant network requests.
+> - **Automatic UI Refresh**: Media bubbles proactively verify token validity when appearing on screen; if expired or within a safety buffer (e.g. < 5 minutes remaining), they silently request a fresh 24-hour GET link.
 
 ---
 
-## 1. Overview & Core Concept
+### 1. Overview & Core Concept
 
-- **What It Does**:
-  - **Group Creation**: Users can create study circles, subject channels, or faculty groups, assigning a name, category, and inviting contacts with interactive multi-select chips.
-  - **Add Contacts to Existing Groups**: Group threads feature an "Add Members" action allowing group participants to seamlessly enroll peers from their contacts list into the group.
-  - **Universal File Attachments**: Users can tap an attachment button in any direct or group conversation to attach any document, assignment, image, or study file. File bubbles display filename, size, extension tag, and open/view actions.
-  - **Crisp Scholastic Light Theme**: The dark interface is replaced with an airy, academic aesthetic matching official DAV institutions.
-
-- **Target Audience**:
-  - Students sharing homework, study circle notes, and project documents.
-  - Teachers organizing department groups, broadcasting announcements, and distributing PDFs.
+- **What It Does**: Upgrades the file attachment infrastructure from public bucket assumptions to private bucket security. Since private Backblaze B2 buckets deny unauthorized GET requests, the serverless edge worker provides both pre-signed PUT URLs for upload and 24-hour pre-signed GET URLs for downloading/viewing. The Android app stores the object key, caches active signed download links in memory, and automatically refreshes them when displaying images, PDFs, or videos in chat bubbles.
+- **Target Audience / Persona**: Students and educators sharing confidential homework files, study circle recordings, and media without risking public exposure or incurring paid public bucket fees on Backblaze B2.
+- **Key Value**: 100% compliance with Backblaze B2 free private bucket policies, zero public URL exposure, automatic renewal of expired links, and zero flicker during chat rendering through smart in-memory caching.
 
 ---
 
-## 2. User Experience & Visual Design
+### 2. User Experience & Visual Design
 
-### 2.1 Clean Scholastic Light Theme Palette
-- **Background / Canvas**: `#F8FAFC` (Slate 50) and `#FFFFFF` (Pure Scholastic White).
-- **Surface Cards**: `#FFFFFF` with crisp `#E2E8F0` (Slate 200) borders and soft elevation.
-- **Brand Primary**: Official Royal Blue `#1E2A78` (representing DAV institutional heritage).
-- **Secondary / Action Accent**: Sky Cyan `#0284C7` (for verified badges, active tabs, and primary action buttons).
-- **Text Hierarchy**:
-  - Primary Headlines & Text: Deep Slate/Navy `#0F172A`.
-  - Secondary Text & Meta: Muted Slate `#475569`.
-  - Captions & Timestamps: `#64748B`.
-- **Chat Bubbles**:
-  - User's Sent Messages: Royal Blue gradient (`#1E2A78` → `#2563EB`) with crisp white text.
-  - Received Messages: Crisp White card (`#FFFFFF`) with `#E2E8F0` border and dark text (`#0F172A`).
+- **Key User Flows**:
+  1. **Upload & Initial Link**: User attaches an image/video/PDF; the worker returns `{ "uploadUrl": "...", "temporaryDownloadUrl": "...", "key": "..." }`. The message is saved to Firestore with `attachmentKey = key`.
+  2. **Viewing Fresh Messages**: On screen load, the app checks if `temporaryDownloadUrl` is valid; if so, it renders immediately via Coil (`AsyncImage`) or system document viewer.
+  3. **Viewing Old Messages (>24 hours)**: When an older message scrolls into view, the bubble detects that the 24-hour signature has expired or that only the storage key is present.
+  4. **Silent In-Line Refresh**: A subtle pulsing placeholder or thumbnail shimmer briefly appears while a fresh 24-hour signed GET link is fetched from `https://workers.dev/?action=download&key=...`.
+  5. **Instant Cache Resolution**: Once fetched, the URL is stored in the client cache so scrolling up and down requires zero repeat network calls.
 
-### 2.2 Group Creation & Member Management Flow
-1. **Fab / Header Action in Chats Tab**: A "+ Group" or "New Study Circle" action button.
-2. **Create Group Dialog**:
-   - Group Title & Description.
-   - Group Type / Academic Category (Study Circle, Class Group, Subject Project, Faculty Room).
-   - "Select Contacts to Add": A scrollable checklist/chip row of the user's added contacts with quick search.
-3. **Group Header & Participant Enclave**:
-   - In `ConversationThreadSheet`, group threads display participant avatars and member count.
-   - An "Add Contacts" icon opens a fast selector to add more contacts to the group in real time.
-
-### 2.3 Universal File Attachments Flow
-1. **Chat Input Bar**: A paperclip icon (`Icons.Default.AttachFile`) next to the text input.
-2. **Picker Launch**: Invokes `ActivityResultContracts.OpenDocument()` with MIME type `*/*`.
-3. **Preview & Confirmation**:
-   - Shows a pending attachment preview badge (icon, filename, filesize) above the input bar before sending.
-   - User can type an accompanying caption or send the file directly.
-4. **Chat Bubble Presentation**:
-   - File bubble card with category-coded badge (PDF, DOCX, IMG, ZIP).
-   - Display of file title, human-readable size (e.g. `2.4 MB`), and timestamp.
+- **Visual Identity & Theme**:
+  - Consistent with **DAV InfoExchange** design tokens (`DavBrandRoyalBlue` #1E3A8A, `DavAccentSky` #0284C7, `DavSurfaceElevated` #F1F5F9).
+  - Media cards display a subtle lock badge indicating end-to-end encrypted S3 bucket access.
+  - Refresh transitions use smooth crossfade animations to prevent layout jumps.
 
 ---
 
-## 3. Key Product Decisions & Trade-Offs
+### 3. Key Product Decisions & Trade-Offs
 
-- **Decision 1: File Storage Strategy (Android Content Provider + Metadata)**
-  - *Chosen Approach*: Files picked via `OpenDocument` persist persistent read permission via `takePersistableUriPermission` and store metadata (URI string, filename, size, MIME type) in the Firestore message document.
-  - *Why*: Allows zero-permission document picking across all Android versions without requiring risky external storage permissions, providing instant sharing of real files.
-- **Decision 2: Light Theme Architecture & Contrast Compliance**
-  - *Chosen Approach*: Update `Theme.kt` with a tailored `LightColorScheme` where `isAppearanceLightStatusBars = true` and `isAppearanceLightNavigationBars = true`.
-  - *Why*: Ensures optimal readability and eliminates all dark-mode eye strain while preserving the DAV institutional branding.
+- **Decision 1: Dual-Action Serverless Edge Routing (`action=upload` vs `action=download`)**
+  - *Chosen Approach*: The Cloudflare Worker handles `action=upload` (issuing 5-min PUT URL + initial 24-hour GET URL) and `action=download` (issuing a fresh 24-hour GET URL using `GetObjectCommand` and `getSignedUrl`).
+  - *Why*: Consolidates all S3 signing logic into a single zero-maintenance edge worker.
+  - *Alternatives Considered*: Separate workers for upload and download (rejected to avoid managing multiple deployment endpoints).
+
+- **Decision 2: 24-Hour Expiration with 10-Minute Safety Window**
+  - *Chosen Approach*: Issue download URLs with `expiresIn: 86400` (24 hours). The Android client treats URLs as expired if remaining time is under 600 seconds.
+  - *Why*: Eliminates edge-case race conditions where an image expires mid-download or during video streaming.
+
+- **Decision 3: Object Key Storage in Firestore Document**
+  - *Chosen Approach*: Save `attachmentKey: String?` in Firestore `threads/{threadId}/messages/{messageId}` alongside `attachmentUrl`.
+  - *Why*: Guarantees that any participant in a group chat can re-request a valid download signature even months after the message was sent.
 
 ---
 
-## 4. Technical Architecture & Data Strategy
+### 4. Technical Architecture & Data Strategy
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│                        DAV InfoExchange Light Theme                    │
-├──────────────────────────┬─────────────────────────────────────────────┤
-│   ChatListScreen         │   ConversationThreadSheet                   │
-│   ├── Active Groups Filter│   ├── Message List (Text & File Cards)      │
-│   ├── Create Group Dialog│   ├── Group Members Header + "Add Contacts" │
-│   └── Contact Pickers    │   └── Input Bar + System Document Picker    │
-└────────────┬─────────────┴──────────────────────┬──────────────────────┘
-             │                                    │
-             ▼                                    ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│                        MeshChatRepository                              │
-│   ├── createGroup(name, category, participants)                       │
-│   ├── addMemberToGroup(threadId, newParticipantHandle)                │
-│   ├── sendFileMessage(threadId, sender, content, attachmentMeta)      │
-│   └── observeThreads() & observeMessages()                             │
+│                        Jetpack Compose Chat UI                         │
+│  MessageBubble ──> Checks in-memory cache for valid signed URL         │
+└───────────────────┬───────────────────────────────────▲────────────────┘
+                    │ Expired or Missing                │ Fresh 24-hour
+                    ▼                                   │ Signed GET URL
+┌───────────────────────────────────────────────────────┴────────────────┐
+│               B2UploadManager (Download URL Cache)                     │
+│  - Checks ConcurrentHashMap<Key, CachedSignedUrl>                      │
+│  - If expired: Calls Worker with action=download&key=...               │
+└──────────────┬────────────────────────────────┬────────────────────────┘
+               │ GET /?action=download&key=...  │
+               ▼                                │
+┌──────────────────────────────┐                │
+│  Cloudflare Worker Edge      │                │
+│  - Validates key             │                │
+│  - Generates GetObjectCommand│                │
+│  - Returns 24h Signed URL    │                │
+└──────────────┬───────────────┘                │
+               │                                │
+               ▼ 24-Hour Pre-signed GET URL     │
+┌───────────────────────────────────────────────┴────────────────────────┐
+│                      Backblaze B2 Private Bucket                       │
+│  Streams image / PDF / video binary securely to Coil / Android Player  │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 4.1 Data Schema Extensions
+#### Detailed Component Plan:
 
-#### `ChatMessage` Model
-```kotlin
-data class ChatMessage(
-    val messageId: String = "",
-    val threadId: String = "",
-    val senderId: String = "",
-    val senderName: String = "",
-    val senderRole: String = "STUDENT",
-    val content: String = "",
-    val timestamp: String = "",
-    val attachmentUri: String? = null,
-    val attachmentName: String? = null,
-    val attachmentType: String? = null,
-    val attachmentSize: String? = null
-)
-```
+1. **Serverless Edge Script (`serverless/b2-presigned-worker.js`)**:
+   - `action=upload` (default): Generates 5-min PUT URL + 24-hour GET URL. Returns:
+     ```json
+     {
+       "uploadUrl": "https://s3.../chat-attachments/...?X-Amz-...",
+       "temporaryDownloadUrl": "https://s3.../chat-attachments/...?X-Amz-...",
+       "key": "chat-attachments/1713681200000_sample.png",
+       "expiresInSeconds": 86400
+     }
+     ```
+   - `action=download`: Accepts `key` or `filename`. Uses `GetObjectCommand` + `getSignedUrl(s3Client, getCommand, { expiresIn: 86400 })`. Returns:
+     ```json
+     {
+       "temporaryDownloadUrl": "https://s3.../chat-attachments/...?X-Amz-...",
+       "key": "chat-attachments/1713681200000_sample.png",
+       "expiresInSeconds": 86400
+     }
+     ```
 
-#### `ConversationThread` Model
-```kotlin
-data class ConversationThread(
-    val id: String = "",
-    val name: String = "",
-    val isGroup: Boolean = false,
-    val participantIds: List<String> = emptyList(),
-    val groupCategory: String = "STUDY_CIRCLE",
-    val lastMessage: String = "",
-    ...
-)
-```
+2. **Data Model Updates (`ChatMessage.kt`)**:
+   - Add `val attachmentKey: String? = null` to represent the private S3 key.
+   - Helper function `isAttachmentExpired(currentTimeMillis: Long): Boolean`.
 
----
+3. **Client Network Manager (`B2UploadManager.kt`)**:
+   - Cache model: `data class CachedSignedUrl(val url: String, val expiresAtMillis: Long)`.
+   - `suspend fun getOrRefreshDownloadUrl(key: String, initialUrl: String? = null, workerEndpoint: String): String`.
+   - `suspend fun fetchTemporaryDownloadUrl(key: String, workerEndpoint: String): Result<String>`.
 
-## 5. Step-by-Step Implementation Sequence
-
-1. **Light Theme Overhaul**:
-   - Update `Color.kt` and `Theme.kt` to default to the clean scholastic white, royal blue, and slate palette.
-   - Update `MainActivity.kt`, `ChatListScreen.kt`, `ContactsTabContent.kt`, `ConversationThreadSheet.kt`, and `AdminPortalScreen.kt` to clean light surfaces and high-contrast dark text.
-2. **File Attachments Integration**:
-   - Extend `ChatMessage.kt` with attachment properties (`attachmentUri`, `attachmentName`, `attachmentType`, `attachmentSize`).
-   - Add `sendFileMessage` method in `MeshChatRepository.kt`.
-   - Add attachment launcher and file card composables in `ConversationThreadSheet.kt`.
-3. **Group Creation & Adding Contacts**:
-   - Enhance group creation dialog with multi-select contact picker chips.
-   - Add `addMemberToGroup` method in `MeshChatRepository.kt`.
-   - Add "Add Members" action and dialog inside `ConversationThreadSheet.kt` for existing groups.
-4. **Build & Compilation Verification**:
-   - Run `compile_applet` to ensure zero compilation or syntax errors.
+4. **UI Integration (`ConversationThreadSheet.kt` & `MessageBubble`)**:
+   - In `MessageBubble`, replace raw URI rendering with a reactive state that resolves via `b2UploadManager.getOrRefreshDownloadUrl`.
+   - Renders `AsyncImage` with crossfade and loading placeholder for images.
+   - Provides tap-to-open action for PDFs and videos with freshly signed URLs.

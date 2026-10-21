@@ -73,6 +73,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.AuthRepository
 import com.example.data.DeviceIpManager
+import com.example.data.SessionManager
 import com.example.model.RegisteredIpEntry
 import com.example.model.UserProfile
 import com.example.ui.theme.VhoqxethBorder
@@ -141,12 +142,24 @@ fun AuthGatewayScreen(
     var showPrivacySheet by remember { mutableStateOf(false) }
     var showTermsSheet by remember { mutableStateOf(false) }
 
+    val sessionManager = remember { SessionManager(context) }
+
     fun checkDeviceAndAuth() {
         isLoading = true
         errorMessage = null
         step = AuthScreenStep.Checking
 
         coroutineScope.launch {
+            // 0. If user is already authenticated locally, bypass password prompt directly!
+            if (sessionManager.isLoggedIn()) {
+                val cached = sessionManager.getSavedUserProfile()
+                if (cached != null) {
+                    isLoading = false
+                    onAuthenticated(cached)
+                    return@launch
+                }
+            }
+
             // 1. Resolve Device Network IP
             val ip = ipManager.resolveDeviceIp()
             detectedIp = ip

@@ -60,6 +60,16 @@ abstract class FirestoreEmulatorTestBase {
     try {
       auth.useEmulator(EMULATOR_HOST, AUTH_PORT)
     } catch (_: Exception) {}
+
+    val isEmulatorReachable = try {
+      java.net.Socket().use { socket ->
+        socket.connect(java.net.InetSocketAddress(EMULATOR_HOST, FIRESTORE_PORT), 300)
+        true
+      }
+    } catch (_: Exception) {
+      false
+    }
+    org.junit.Assume.assumeTrue("Firestore emulator is not running on $EMULATOR_HOST:$FIRESTORE_PORT; skipping emulator tests.", isEmulatorReachable)
   }
 
   @After
