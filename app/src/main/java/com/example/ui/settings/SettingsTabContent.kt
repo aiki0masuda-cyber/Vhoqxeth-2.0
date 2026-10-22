@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
@@ -61,7 +62,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.AppSelfHealingEngine
 import com.example.data.AuthRepository
+import com.example.data.SessionManager
 import com.example.model.UserProfile
+import com.example.ui.chat.CloudflareWorkerSettingsDialog
 import com.example.ui.theme.VhoqxethBorder
 import com.example.ui.theme.VhoqxethBorderLightStrong
 import com.example.ui.theme.VhoqxethCyanAccent
@@ -91,8 +94,10 @@ fun SettingsTabContent(
 ) {
     var showProfileEditor by remember { mutableStateOf(false) }
     var showChangePassword by remember { mutableStateOf(false) }
+    var showCloudflareSettings by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
+    val sessionManager = remember { SessionManager(context) }
     val coroutineScope = rememberCoroutineScope()
     val healingEngine = remember { AppSelfHealingEngine.getInstance(context) }
     val totalHealedCount by healingEngine.totalHealedCount.collectAsState()
@@ -430,6 +435,16 @@ fun SettingsTabContent(
                         fontWeight = FontWeight.Bold
                     )
                 }
+
+                HorizontalDivider(color = VhoqxethBorder, thickness = 0.5.dp)
+
+                SettingsNavigationRow(
+                    icon = Icons.Default.CloudQueue,
+                    title = "Cloudflare Edge Gatekeeper",
+                    subtitle = "Backblaze B2 S3 pre-signed URL generator (${sessionManager.getCloudflareWorkerUrl()})",
+                    onClick = { showCloudflareSettings = true },
+                    testTag = "settings_item_cloudflare_worker"
+                )
             }
         }
 
@@ -509,6 +524,17 @@ fun SettingsTabContent(
             onSuccess = {
                 onShowSnackbar("Password updated successfully")
             }
+        )
+    }
+
+    if (showCloudflareSettings) {
+        CloudflareWorkerSettingsDialog(
+            currentUrl = sessionManager.getCloudflareWorkerUrl(),
+            onSaveUrl = { newUrl ->
+                sessionManager.setCloudflareWorkerUrl(newUrl)
+                onShowSnackbar("Cloudflare Worker URL updated")
+            },
+            onDismiss = { showCloudflareSettings = false }
         )
     }
 }

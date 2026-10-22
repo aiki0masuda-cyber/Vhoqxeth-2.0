@@ -111,6 +111,16 @@ class SessionManager(context: Context) {
             .commit()
     }
 
+    fun getCloudflareWorkerUrl(): String {
+        return prefs.getString(KEY_CLOUDFLARE_WORKER_URL, "https://b2-chat-gatekeeper.aiki0masuda.workers.dev/")
+            ?.ifBlank { "https://b2-chat-gatekeeper.aiki0masuda.workers.dev/" }
+            ?: "https://b2-chat-gatekeeper.aiki0masuda.workers.dev/"
+    }
+
+    fun setCloudflareWorkerUrl(url: String) {
+        prefs.edit().putString(KEY_CLOUDFLARE_WORKER_URL, url.trim()).commit()
+    }
+
     fun clearSession() {
         val accepted = hasAcceptedTerms()
         prefs.edit()
@@ -143,5 +153,6 @@ class SessionManager(context: Context) {
         private const val KEY_CURRENT_IP = "current_ip"
         private const val KEY_ASSOCIATED_IPS = "associated_ips"
         private const val KEY_CREATED_AT = "created_at"
+        private const val KEY_CLOUDFLARE_WORKER_URL = "cloudflare_worker_url"
     }
 }

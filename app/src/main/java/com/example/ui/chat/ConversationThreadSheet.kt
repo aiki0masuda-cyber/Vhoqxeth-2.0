@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -33,6 +34,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FolderZip
@@ -68,7 +70,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import com.example.data.B2UploadManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.example.model.UploadState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -86,7 +90,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.ai.AiImageGeneratorEngine
+import com.example.data.B2UploadManager
 import com.example.data.MeshChatRepository
+import com.example.data.SessionManager
 import com.example.model.ChatMessage
 import com.example.model.ConversationThread
 import com.example.model.UserProfile
@@ -130,6 +136,7 @@ fun ConversationThreadSheet(
     var showAddMemberDialog by remember { mutableStateOf(false) }
     var showAiImageDialog by remember { mutableStateOf(false) }
     var showGroupInfoSheet by remember { mutableStateOf(false) }
+    var showCloudflareWorkerSettings by remember { mutableStateOf(false) }
 
     // Live thread stream from Firestore
     val liveThreadState by chatRepository.observeThread(thread.id).collectAsState(initial = thread)
@@ -145,7 +152,12 @@ fun ConversationThreadSheet(
     }
     val messages by messagesFlow.collectAsState(initial = emptyList())
 
-    val b2UploadManager = remember { B2UploadManager() }
+    val sessionManager = remember { SessionManager(context) }
+    val b2UploadManager = remember {
+        B2UploadManager().apply {
+            configuredWorkerEndpoint = sessionManager.getCloudflareWorkerUrl()
+        }
+    }
     val pendingUploads = remember { mutableStateListOf<ChatMessage>() }
     val uploadStates = remember { mutableStateMapOf<String, UploadState>() }
 
@@ -363,6 +375,18 @@ fun ConversationThreadSheet(
                 }
             }
 
+            // Cloudflare Worker Gatekeeper Settings
+            IconButton(
+                onClick = { showCloudflareWorkerSettings = true },
+                modifier = Modifier.testTag("open_cloudflare_worker_settings_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.CloudQueue,
+                    contentDescription = "Cloudflare Worker Gatekeeper Settings",
+                    tint = DavBrandRoyalBlue
+                )
+            }
+
             IconButton(
                 onClick = onDismiss,
                 modifier = Modifier.testTag("close_thread_sheet_button")
@@ -460,9 +484,11 @@ fun ConversationThreadSheet(
                             },
                             onRetry = {
                                 coroutineScope.launch {
+                                    val currentWorkerUrl = sessionManager.getCloudflareWorkerUrl()
                                     val attUri = Uri.parse(msg.attachmentUri ?: "")
                                     val retryResult = b2UploadManager.executeCompleteUploadWithKey(
                                         uploadId = msg.messageId,
+                                        workerEndpoint = currentWorkerUrl,
                                         contentResolver = context.contentResolver,
                                         fileUri = attUri,
                                         filename = msg.attachmentName ?: "attachment",
@@ -708,8 +734,10 @@ fun ConversationThreadSheet(
                                 pendingUploads.add(placeholder)
 
                                 coroutineScope.launch {
+                                    val currentWorkerUrl = sessionManager.getCloudflareWorkerUrl()
                                     val uploadResult = b2UploadManager.executeCompleteUploadWithKey(
                                         uploadId = tempId,
+                                        workerEndpoint = currentWorkerUrl,
                                         contentResolver = context.contentResolver,
                                         fileUri = att.uri,
                                         filename = att.name,
@@ -735,7 +763,16 @@ fun ConversationThreadSheet(
                                         val completion = uploadResult.getOrThrow()
                                         completion.downloadUrl to completion.key
                                     } else {
-                                        // Fallback to local device URI if edge worker is offline
+                                        // Fallback to local device URI if edge worker is unreachable
+                                        val errDesc = uploadResult.exceptionOrNull()?.message ?: "Worker offline"
+                                        Log.w("ConversationSheet", "Edge upload bypassed ($errDesc). Using local attachment URI.")
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(
+                                                context,
+                                                "Worker offline: attachment saved locally. Message sent.",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
                                         att.uri.toString() to null
                                     }
 
@@ -815,21 +852,70 @@ fun ConversationThreadSheet(
             confirmButtonLabel = "Send into Chat",
             onDismiss = { showAiImageDialog = false },
             onImageAccepted = { bitmap, prompt ->
+                val cachedUri = AiImageGeneratorEngine.saveBitmapToLocalCache(
+                    context = context,
+                    bitmap = bitmap,
+                    prefix = "chat_ai_${currentThread.id}"
+                )
+                val tempId = "ai_upload_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}"
+                val attName = "AI_${prompt.take(20).replace(" ", "_").replace(Regex("[^a-zA-Z0-9_]"), "")}.png"
+                val placeholder = ChatMessage(
+                    messageId = tempId,
+                    threadId = currentThread.id,
+                    senderId = currentHandle,
+                    senderName = currentUser.displayName,
+                    content = prompt,
+                    timestamp = "Uploading...",
+                    attachmentUri = cachedUri.toString(),
+                    attachmentName = attName,
+                    attachmentType = "IMAGE",
+                    attachmentSize = "AI Generated PNG",
+                    isUploadingPlaceholder = true,
+                    uploadProgress = 0f
+                )
+                pendingUploads.add(placeholder)
+
                 coroutineScope.launch {
-                    val cachedUri = AiImageGeneratorEngine.saveBitmapToLocalCache(
-                        context = context,
-                        bitmap = bitmap,
-                        prefix = "chat_ai_${currentThread.id}"
+                    val currentWorkerUrl = sessionManager.getCloudflareWorkerUrl()
+                    val uploadResult = b2UploadManager.executeCompleteUploadWithKey(
+                        uploadId = tempId,
+                        workerEndpoint = currentWorkerUrl,
+                        contentResolver = context.contentResolver,
+                        fileUri = cachedUri,
+                        filename = attName,
+                        contentType = "image/png",
+                        fileSizeBytes = 0L,
+                        onStateChanged = { st ->
+                            uploadStates[tempId] = st
+                            if (st is UploadState.Uploading) {
+                                val idx = pendingUploads.indexOfFirst { it.messageId == tempId }
+                                if (idx != -1) {
+                                    pendingUploads[idx] = pendingUploads[idx].copy(uploadProgress = st.progress)
+                                }
+                            }
+                        }
                     )
+
+                    val (finalDownloadUrl, finalKey) = if (uploadResult.isSuccess) {
+                        val completion = uploadResult.getOrThrow()
+                        completion.downloadUrl to completion.key
+                    } else {
+                        cachedUri.toString() to null
+                    }
+
                     chatRepository.sendFileMessage(
                         threadId = currentThread.id,
                         senderProfile = currentUser,
                         content = prompt,
-                        attachmentUri = cachedUri.toString(),
-                        attachmentName = "AI Diagram: ${prompt.take(28)}...",
+                        attachmentUri = finalDownloadUrl,
+                        attachmentName = attName,
                         attachmentType = "IMAGE",
-                        attachmentSize = "PNG • AI Generated"
+                        attachmentSize = "AI Generated PNG",
+                        attachmentKey = finalKey
                     )
+
+                    pendingUploads.removeAll { it.messageId == tempId }
+                    uploadStates.remove(tempId)
                 }
             }
         )
@@ -852,6 +938,19 @@ fun ConversationThreadSheet(
                 onDismiss = { showGroupInfoSheet = false }
             )
         }
+    }
+
+    // Dialog: Cloudflare Worker Gatekeeper Settings
+    if (showCloudflareWorkerSettings) {
+        CloudflareWorkerSettingsDialog(
+            currentUrl = sessionManager.getCloudflareWorkerUrl(),
+            onSaveUrl = { newUrl ->
+                sessionManager.setCloudflareWorkerUrl(newUrl)
+                b2UploadManager.configuredWorkerEndpoint = newUrl
+                Toast.makeText(context, "Storage gatekeeper URL updated", Toast.LENGTH_SHORT).show()
+            },
+            onDismiss = { showCloudflareWorkerSettings = false }
+        )
     }
 }
 

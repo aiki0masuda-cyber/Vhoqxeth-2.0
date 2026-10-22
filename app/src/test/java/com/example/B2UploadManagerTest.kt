@@ -9,7 +9,12 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [36])
 class B2UploadManagerTest {
 
     @Test
@@ -75,5 +80,31 @@ class B2UploadManagerTest {
         // Subsequent call should immediately retrieve from cache
         val resolvedSecond = manager.getOrRefreshDownloadUrl(key = key, currentUrl = null)
         assertEquals(signedUrl, resolvedSecond)
+    }
+
+    @Test
+    fun uploadManagerEffectiveEndpointCanBeOverridden() {
+        val manager = B2UploadManager()
+        assertEquals(B2UploadManager.DEFAULT_WORKER_ENDPOINT, manager.getEffectiveWorkerEndpoint())
+
+        manager.configuredWorkerEndpoint = "https://custom-worker.example.workers.dev"
+        assertEquals("https://custom-worker.example.workers.dev", manager.getEffectiveWorkerEndpoint())
+
+        val overridden = manager.getEffectiveWorkerEndpoint("https://explicit-override.example.com")
+        assertEquals("https://explicit-override.example.com", overridden)
+    }
+
+    @Test
+    fun uploadManagerReturnsGracefulFailureWhenWorkerUnreachable(): Unit = runBlocking {
+        val manager = B2UploadManager()
+        val result = manager.fetchUploadTicket(
+            workerEndpoint = "http://127.0.0.1:54321/nonexistent",
+            filename = "document.pdf",
+            contentType = "application/pdf"
+        )
+        assertTrue(result.isFailure)
+        val exception = result.exceptionOrNull()
+        assertNotNull(exception)
+        assertTrue(exception?.message?.contains("Cloudflare worker unreachable") == true)
     }
 }

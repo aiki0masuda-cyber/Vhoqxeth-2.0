@@ -31,17 +31,29 @@ import java.util.concurrent.TimeUnit
  * Features in-memory caching and automatic token renewal for expiring media URLs.
  */
 class B2UploadManager(
-    private val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .writeTimeout(120, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .build()
+    private val client: OkHttpClient = defaultOkHttpClient(),
+    var configuredWorkerEndpoint: String? = null
 ) {
     companion object {
         private const val TAG = "B2UploadManager"
 
         // Default or configurable edge worker gatekeeper endpoint
-        const val DEFAULT_WORKER_ENDPOINT = "https://b2-presigned-url-worker.dav-academic.workers.dev"
+        const val DEFAULT_WORKER_ENDPOINT = "https://b2-chat-gatekeeper.aiki0masuda.workers.dev/"
+
+        fun defaultOkHttpClient(): OkHttpClient {
+            return OkHttpClient.Builder()
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .writeTimeout(90, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .retryOnConnectionFailure(false)
+                .build()
+        }
+    }
+
+    fun getEffectiveWorkerEndpoint(override: String? = null): String {
+        return override?.takeIf { it.isNotBlank() }
+            ?: configuredWorkerEndpoint?.takeIf { it.isNotBlank() }
+            ?: DEFAULT_WORKER_ENDPOINT
     }
 
     /**
@@ -81,17 +93,18 @@ class B2UploadManager(
      * from the serverless edge gatekeeper endpoint.
      */
     suspend fun fetchUploadTicket(
-        workerEndpoint: String = DEFAULT_WORKER_ENDPOINT,
+        workerEndpoint: String = getEffectiveWorkerEndpoint(),
         filename: String,
         contentType: String
     ): Result<UploadTicket> = withContext(Dispatchers.IO) {
+        val targetEndpoint = getEffectiveWorkerEndpoint(workerEndpoint)
         try {
             val encodedFilename = URLEncoder.encode(filename, "UTF-8")
             val encodedContentType = URLEncoder.encode(contentType, "UTF-8")
-            val requestUrl = if (workerEndpoint.contains("?")) {
-                "$workerEndpoint&action=upload&filename=$encodedFilename&contentType=$encodedContentType"
+            val requestUrl = if (targetEndpoint.contains("?")) {
+                "$targetEndpoint&action=upload&filename=$encodedFilename&contentType=$encodedContentType"
             } else {
-                "$workerEndpoint?action=upload&filename=$encodedFilename&contentType=$encodedContentType"
+                "$targetEndpoint?action=upload&filename=$encodedFilename&contentType=$encodedContentType"
             }
 
             Log.d(TAG, "Requesting pre-signed URL from edge worker: $requestUrl")
@@ -110,6 +123,7 @@ class B2UploadManager(
                     } catch (_: Exception) {
                         "HTTP ${response.code}: ${response.message}"
                     }
+                    Log.w(TAG, "Edge worker returned non-success code: $errMsg")
                     return@withContext Result.failure(IOException("Gatekeeper error: $errMsg"))
                 }
 
@@ -135,8 +149,9 @@ class B2UploadManager(
                 )
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to fetch pre-signed ticket from worker", e)
-            Result.failure(e)
+            Log.e(TAG, "Failed to fetch pre-signed ticket from worker: ${e.localizedMessage}", e)
+            Log.e(TAG, "OkHttp onFailure: ${e.localizedMessage}", e)
+            Result.failure(IOException("Cloudflare worker unreachable ($targetEndpoint): ${e.localizedMessage}", e))
         }
     }
 
@@ -146,14 +161,15 @@ class B2UploadManager(
      */
     suspend fun fetchTemporaryDownloadUrl(
         key: String,
-        workerEndpoint: String = DEFAULT_WORKER_ENDPOINT
+        workerEndpoint: String = getEffectiveWorkerEndpoint()
     ): Result<String> = withContext(Dispatchers.IO) {
+        val targetEndpoint = getEffectiveWorkerEndpoint(workerEndpoint)
         try {
             val encodedKey = URLEncoder.encode(key, "UTF-8")
-            val requestUrl = if (workerEndpoint.contains("?")) {
-                "$workerEndpoint&action=download&key=$encodedKey"
+            val requestUrl = if (targetEndpoint.contains("?")) {
+                "$targetEndpoint&action=download&key=$encodedKey"
             } else {
-                "$workerEndpoint?action=download&key=$encodedKey"
+                "$targetEndpoint?action=download&key=$encodedKey"
             }
 
             Log.d(TAG, "Requesting fresh 24h download link for key=$key from: $requestUrl")
@@ -172,6 +188,7 @@ class B2UploadManager(
                     } catch (_: Exception) {
                         "HTTP ${response.code}"
                     }
+                    Log.w(TAG, "Edge worker returned non-success code for download URL: $errMsg")
                     return@withContext Result.failure(IOException("Gatekeeper error: $errMsg"))
                 }
 
@@ -188,8 +205,9 @@ class B2UploadManager(
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to refresh download URL for key: $key", e)
-            Result.failure(e)
+            Log.e(TAG, "OkHttp onFailure: ${e.localizedMessage}", e)
+            Log.w(TAG, "Could not refresh download URL for key: $key ($targetEndpoint): ${e.message}")
+            Result.failure(IOException("Download URL refresh unavailable: ${e.localizedMessage}", e))
         }
     }
 
@@ -200,7 +218,7 @@ class B2UploadManager(
     suspend fun getOrRefreshDownloadUrl(
         key: String?,
         currentUrl: String? = null,
-        workerEndpoint: String = DEFAULT_WORKER_ENDPOINT
+        workerEndpoint: String = getEffectiveWorkerEndpoint()
     ): String {
         if (key.isNullOrBlank()) {
             return currentUrl ?: ""
@@ -261,7 +279,7 @@ class B2UploadManager(
                 call.execute().use { response ->
                     if (!response.isSuccessful) {
                         val body = response.body?.string().orEmpty()
-                        Log.e(TAG, "S3 PUT failed with code ${response.code}: $body")
+                        Log.w(TAG, "S3 PUT status ${response.code}: $body")
                         return@withContext Result.failure(
                             IOException("S3 PUT failed with HTTP ${response.code}: ${response.message}")
                         )
@@ -273,7 +291,8 @@ class B2UploadManager(
                 activeCalls.remove(uploadId)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Streaming to pre-signed URL encountered error", e)
+            Log.e(TAG, "OkHttp onFailure: ${e.localizedMessage}", e)
+            Log.w(TAG, "Streaming to pre-signed URL encountered error: ${e.message}")
             Result.failure(e)
         }
     }
@@ -283,7 +302,7 @@ class B2UploadManager(
      */
     suspend fun executeCompleteUploadWithKey(
         uploadId: String,
-        workerEndpoint: String = DEFAULT_WORKER_ENDPOINT,
+        workerEndpoint: String = getEffectiveWorkerEndpoint(),
         contentResolver: ContentResolver,
         fileUri: Uri,
         filename: String,
@@ -291,10 +310,11 @@ class B2UploadManager(
         fileSizeBytes: Long,
         onStateChanged: (UploadState) -> Unit
     ): Result<UploadCompletion> {
+        val targetEndpoint = getEffectiveWorkerEndpoint(workerEndpoint)
         onStateChanged(UploadState.FetchingTicket)
 
         val ticketResult = fetchUploadTicket(
-            workerEndpoint = workerEndpoint,
+            workerEndpoint = targetEndpoint,
             filename = filename,
             contentType = contentType
         )
@@ -335,7 +355,7 @@ class B2UploadManager(
      */
     suspend fun executeCompleteUpload(
         uploadId: String,
-        workerEndpoint: String = DEFAULT_WORKER_ENDPOINT,
+        workerEndpoint: String = getEffectiveWorkerEndpoint(),
         contentResolver: ContentResolver,
         fileUri: Uri,
         filename: String,
@@ -343,9 +363,10 @@ class B2UploadManager(
         fileSizeBytes: Long,
         onStateChanged: (UploadState) -> Unit
     ): Result<String> {
+        val targetEndpoint = getEffectiveWorkerEndpoint(workerEndpoint)
         val res = executeCompleteUploadWithKey(
             uploadId = uploadId,
-            workerEndpoint = workerEndpoint,
+            workerEndpoint = targetEndpoint,
             contentResolver = contentResolver,
             fileUri = fileUri,
             filename = filename,

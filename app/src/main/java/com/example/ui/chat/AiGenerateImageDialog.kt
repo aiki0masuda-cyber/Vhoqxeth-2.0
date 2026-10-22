@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
@@ -56,6 +57,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ai.AiImageGeneratorEngine
+import com.example.ai.ImageAspectRatio
 import com.example.ui.theme.DavAccentSky
 import com.example.ui.theme.DavBorder
 import com.example.ui.theme.DavBrandRoyalBlue
@@ -69,6 +71,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun AiGenerateImageDialog(
     initialPrompt: String = "",
+    initialInputBitmap: Bitmap? = null,
     title: String = "Generate Study Illustration with AI",
     confirmButtonLabel: String = "Send into Chat",
     onDismiss: () -> Unit,
@@ -76,17 +79,21 @@ fun AiGenerateImageDialog(
 ) {
     val coroutineScope = rememberCoroutineScope()
     var prompt by remember { mutableStateOf(initialPrompt) }
+    var selectedAspectRatio by remember { mutableStateOf(ImageAspectRatio.SQUARE_1_1) }
     var isGenerating by remember { mutableStateOf(false) }
-    var generatedBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var generatedBitmap by remember { mutableStateOf<Bitmap?>(initialInputBitmap) }
+    var editInstruction by remember { mutableStateOf("") }
+    var isEditingMode by remember { mutableStateOf(initialInputBitmap != null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     val quickChips = listOf(
-        "🧬 Biology: Plant Cell Organelles Diagram" to "Detailed schematic cross-section of a plant cell with labeled chloroplasts, cell wall, and nucleus, educational textbook illustration",
-        "⚛️ Physics: Ray Optics Prism Dispersion" to "Scientific diagram of light refraction and dispersion through a glass triangular prism showing spectrum of rainbow colors",
-        "📐 Geometry: Pythagorean Theorem Proof" to "Geometric visual proof diagram of Pythagorean theorem with right triangle and squares on hypotenuse",
-        "📜 History: Harappan Civilization Seal" to "Scholastic archeological sketch of Indus Valley Harappan terracotta unicorn seal with ancient pictographic script",
-        "⚗️ Chemistry: Molecular Structure of Water" to "3D ball and stick molecular model diagram of water H2O with polar bonds and hydrogen bonds",
-        "🛡️ School Emblem: DAV Academic Crest" to "Prestigious Vedic and scholastic emblem crest with flaming torch of knowledge, open textbook, and Vedic swastika motifs"
+        "🧬 Biology: Plant Cell Organelles" to "Detailed schematic cross-section of a plant cell with labeled chloroplasts, cell wall, and nucleus, educational textbook illustration",
+        "⚛️ Physics: Prism Light Dispersion" to "Scientific diagram of light refraction and dispersion through a glass triangular prism showing spectrum of rainbow colors",
+        "📐 Geometry: Pythagorean Proof" to "Geometric visual proof diagram of Pythagorean theorem with right triangle and squares on hypotenuse",
+        "📜 History: Harappan Unicorn Seal" to "Scholastic archeological sketch of Indus Valley Harappan terracotta unicorn seal with ancient pictographic script",
+        "⚗️ Chemistry: Water Molecule Model" to "3D ball and stick molecular model diagram of water H2O with polar bonds and hydrogen bonds",
+        "🪐 Astronomy: Solar System Orbits" to "High contrast educational diagram of the inner and outer planets orbiting the Sun with labeled elliptical paths",
+        "🛡️ School Crest: DAV Knowledge Crest" to "Prestigious Vedic and scholastic emblem crest with flaming torch of knowledge, open textbook, and Vedic motifs"
     )
 
     fun startGeneration() {
@@ -94,10 +101,14 @@ fun AiGenerateImageDialog(
         isGenerating = true
         errorMessage = null
         coroutineScope.launch {
-            val result = AiImageGeneratorEngine.generateImage(prompt.trim())
+            val result = AiImageGeneratorEngine.generateImage(
+                prompt = prompt.trim(),
+                aspectRatio = selectedAspectRatio
+            )
             isGenerating = false
             if (result.isSuccess) {
                 generatedBitmap = result.getOrNull()
+                isEditingMode = false
             } else {
                 val ex = result.exceptionOrNull()
                 val rawMsg = ex?.localizedMessage ?: ex?.message ?: "Failed to generate image."
@@ -111,6 +122,29 @@ fun AiGenerateImageDialog(
                     }
                     else -> rawMsg
                 }
+            }
+        }
+    }
+
+    fun startRefinement() {
+        val currentBmp = generatedBitmap ?: return
+        if (editInstruction.trim().isBlank()) return
+        isGenerating = true
+        errorMessage = null
+        coroutineScope.launch {
+            val result = AiImageGeneratorEngine.editImage(
+                inputBitmap = currentBmp,
+                editInstruction = editInstruction.trim()
+            )
+            isGenerating = false
+            if (result.isSuccess) {
+                generatedBitmap = result.getOrNull()
+                prompt = "${prompt.ifBlank { "Illustration" }} (${editInstruction.trim()})"
+                editInstruction = ""
+                isEditingMode = false
+            } else {
+                val ex = result.exceptionOrNull()
+                errorMessage = ex?.localizedMessage ?: ex?.message ?: "Failed to refine image."
             }
         }
     }
@@ -149,7 +183,7 @@ fun AiGenerateImageDialog(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Powered by Firebase AI Logic (gemini-nano-banana-2.1)",
+                        text = "Powered by Firebase AI Logic (${AiImageGeneratorEngine.MODEL_NAME})",
                         color = DavTextSecondary,
                         fontSize = 10.sp
                     )
@@ -215,6 +249,50 @@ fun AiGenerateImageDialog(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
+                    // Aspect ratio chips
+                    Text(
+                        text = "ASPECT RATIO",
+                        color = DavBrandRoyalBlue,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        ImageAspectRatio.entries.forEach { ratio ->
+                            val isSelected = selectedAspectRatio == ratio
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isSelected) DavBrandRoyalBlue else DavSurfaceElevated)
+                                    .border(
+                                        1.dp,
+                                        if (isSelected) DavBrandRoyalBlue else DavBorder,
+                                        RoundedCornerShape(8.dp)
+                                    )
+                                    .clickable(enabled = !isGenerating) {
+                                        selectedAspectRatio = ratio
+                                    }
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                                    .testTag("aspect_ratio_${ratio.name}")
+                            ) {
+                                Text(
+                                    text = ratio.label,
+                                    color = if (isSelected) Color.White else DavTextPrimary,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
                     Text(
                         text = "SCHOLASTIC INSPIRATION",
                         color = DavBrandRoyalBlue,
@@ -254,10 +332,11 @@ fun AiGenerateImageDialog(
                     }
                 } else {
                     // Generated Bitmap Preview
+                    val ratio = selectedAspectRatio.ratioWidth / selectedAspectRatio.ratioHeight
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .aspectRatio(1f)
+                            .aspectRatio(ratio.coerceIn(0.56f, 1.78f))
                             .clip(RoundedCornerShape(14.dp))
                             .border(1.dp, DavBorder, RoundedCornerShape(14.dp))
                             .background(DavCanvasLight),
@@ -266,7 +345,7 @@ fun AiGenerateImageDialog(
                         Image(
                             bitmap = generatedBitmap!!.asImageBitmap(),
                             contentDescription = "AI Generated Artwork",
-                            contentScale = ContentScale.Crop,
+                            contentScale = ContentScale.Fit,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .testTag("ai_generated_image_preview")
@@ -281,6 +360,108 @@ fun AiGenerateImageDialog(
                         fontSize = 12.sp,
                         maxLines = 2
                     )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Toggle refinement/editing mode
+                    if (!isEditingMode) {
+                        OutlinedButton(
+                            onClick = { isEditingMode = true },
+                            enabled = !isGenerating,
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("toggle_refine_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AutoFixHigh,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = DavBrandRoyalBlue
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Refine / Edit with Gemini AI", color = DavBrandRoyalBlue, fontSize = 12.sp)
+                        }
+                    } else {
+                        // In-place refinement input
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(DavSurfaceElevated)
+                                .border(1.dp, DavBorder, RoundedCornerShape(10.dp))
+                                .padding(10.dp)
+                        ) {
+                            Text(
+                                text = "Refinement instruction (image-to-image):",
+                                color = DavTextPrimary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            OutlinedTextField(
+                                value = editInstruction,
+                                onValueChange = { editInstruction = it },
+                                placeholder = {
+                                    Text(
+                                        text = "e.g. Add schematic labels, make background dark...",
+                                        fontSize = 12.sp,
+                                        color = DavTextMuted
+                                    )
+                                },
+                                singleLine = false,
+                                maxLines = 2,
+                                enabled = !isGenerating,
+                                shape = RoundedCornerShape(8.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedContainerColor = Color.White,
+                                    unfocusedContainerColor = Color.White,
+                                    focusedBorderColor = DavBrandRoyalBlue,
+                                    unfocusedBorderColor = DavBorder,
+                                    focusedTextColor = DavTextPrimary,
+                                    unfocusedTextColor = DavTextPrimary
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("refine_instruction_input")
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                OutlinedButton(
+                                    onClick = { isEditingMode = false },
+                                    enabled = !isGenerating,
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.height(36.dp)
+                                ) {
+                                    Text("Cancel", fontSize = 11.sp)
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Button(
+                                    onClick = { startRefinement() },
+                                    enabled = editInstruction.trim().isNotBlank() && !isGenerating,
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = DavBrandRoyalBlue,
+                                        contentColor = Color.White
+                                    ),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier
+                                        .height(36.dp)
+                                        .testTag("submit_refinement_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.AutoFixHigh,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Apply Edit", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // Loading State indicator
@@ -301,7 +482,11 @@ fun AiGenerateImageDialog(
                         )
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
-                            text = "Synthesizing visual representation with Gemini Nano Banana...",
+                            text = if (isEditingMode) {
+                                "Refining visual representation with Gemini AI..."
+                            } else {
+                                "Synthesizing visual representation with Gemini ${AiImageGeneratorEngine.MODEL_NAME}..."
+                            },
                             color = DavBrandRoyalBlue,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Medium
@@ -393,6 +578,7 @@ fun AiGenerateImageDialog(
                 OutlinedButton(
                     onClick = {
                         generatedBitmap = null
+                        isEditingMode = false
                     },
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier.testTag("regenerate_ai_image_button")
