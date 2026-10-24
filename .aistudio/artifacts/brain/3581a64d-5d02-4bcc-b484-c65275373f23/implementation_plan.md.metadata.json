@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan for Private Backblaze B2 bucket support with 24-hour pre-signed GET download URLs, action=download edge routing, in-memory client token caching, and proactive UI refresh.",
-  "updatedAt":  "2026-10-21T10:51:24.674801163Z",
+  "summary":  "Implementation plan for removing serverless proxy requests, configuring direct client-to-Hugging Face Inference Router endpoint (https://router.huggingface.co/hf-inference/models/), injecting API token from AI Studio Secrets panel via BuildConfig, and resolving inference errors.",
+  "updatedAt":  "2026-10-24T10:33:28.288395897Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

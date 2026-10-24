@@ -116,7 +116,8 @@ dependencies {
 
     implementation(libs.converter.moshi)
     implementation(libs.coil.compose)
-    implementation(libs.firebase.ai)
+    // Disabled Firebase AI Logic in favor of custom Hugging Face Inference API
+    // implementation(libs.firebase.ai)
     implementation(libs.firebase.firestore)
 
     implementation(libs.firebase.auth)

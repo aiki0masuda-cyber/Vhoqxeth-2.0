@@ -260,7 +260,7 @@ fun CreateStudyCircleDialog(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = if (customAvatarUri != null) "Custom AI emblem created" else "Generate with Gemini Nano Banana",
+                            text = if (customAvatarUri != null) "Custom AI emblem created" else "Generate with Hugging Face AI",
                             color = DavTextMuted,
                             fontSize = 10.sp
                         )

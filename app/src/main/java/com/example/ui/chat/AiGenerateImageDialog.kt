@@ -25,9 +25,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.AutoFixHigh
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -39,6 +44,8 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -52,12 +59,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ai.AiImageGeneratorEngine
+import com.example.ai.HuggingFaceImageEngine
+import com.example.ai.HuggingFaceModel
 import com.example.ai.ImageAspectRatio
+import com.example.data.SessionManager
 import com.example.ui.theme.DavAccentSky
 import com.example.ui.theme.DavBorder
 import com.example.ui.theme.DavBrandRoyalBlue
@@ -77,23 +88,45 @@ fun AiGenerateImageDialog(
     onDismiss: () -> Unit,
     onImageAccepted: (Bitmap, String) -> Unit
 ) {
+    val context = LocalContext.current
+    val sessionManager = remember { SessionManager(context) }
     val coroutineScope = rememberCoroutineScope()
+
     var prompt by remember { mutableStateOf(initialPrompt) }
     var selectedAspectRatio by remember { mutableStateOf(ImageAspectRatio.SQUARE_1_1) }
+    var selectedModel by remember {
+        mutableStateOf(HuggingFaceModel.fromId(sessionManager.getHuggingFaceModel()))
+    }
+    var customModelId by remember { mutableStateOf(sessionManager.getHuggingFaceCustomModel()) }
+    var useCustomModel by remember { mutableStateOf(customModelId.isNotBlank()) }
+
+    var customApiKey by remember { mutableStateOf(sessionManager.getHuggingFaceApiKey()) }
+    var lowTokenMode by remember { mutableStateOf(sessionManager.isLowTokenModeEnabled()) }
+    var showSettings by remember { mutableStateOf(false) }
+
     var isGenerating by remember { mutableStateOf(false) }
     var generatedBitmap by remember { mutableStateOf<Bitmap?>(initialInputBitmap) }
     var editInstruction by remember { mutableStateOf("") }
     var isEditingMode by remember { mutableStateOf(initialInputBitmap != null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
+    val secretsPanelKey = remember { HuggingFaceImageEngine.resolveConfiguredApiKey() }
+    val isKeyActive = customApiKey.isNotBlank() || secretsPanelKey.isNotBlank()
+
+    val activeModelDisplayName = if (useCustomModel && customModelId.isNotBlank()) {
+        customModelId.trim()
+    } else {
+        selectedModel.displayName
+    }
+
     val quickChips = listOf(
-        "🧬 Biology: Plant Cell Organelles" to "Detailed schematic cross-section of a plant cell with labeled chloroplasts, cell wall, and nucleus, educational textbook illustration",
-        "⚛️ Physics: Prism Light Dispersion" to "Scientific diagram of light refraction and dispersion through a glass triangular prism showing spectrum of rainbow colors",
-        "📐 Geometry: Pythagorean Proof" to "Geometric visual proof diagram of Pythagorean theorem with right triangle and squares on hypotenuse",
-        "📜 History: Harappan Unicorn Seal" to "Scholastic archeological sketch of Indus Valley Harappan terracotta unicorn seal with ancient pictographic script",
-        "⚗️ Chemistry: Water Molecule Model" to "3D ball and stick molecular model diagram of water H2O with polar bonds and hydrogen bonds",
-        "🪐 Astronomy: Solar System Orbits" to "High contrast educational diagram of the inner and outer planets orbiting the Sun with labeled elliptical paths",
-        "🛡️ School Crest: DAV Knowledge Crest" to "Prestigious Vedic and scholastic emblem crest with flaming torch of knowledge, open textbook, and Vedic motifs"
+        "🧬 Biology: Plant Cell Organelles" to "Cross-section of a plant cell with labeled chloroplasts, cell wall, and nucleus",
+        "⚛️ Physics: Prism Light Dispersion" to "Scientific diagram of light refraction and dispersion through glass triangular prism",
+        "📐 Geometry: Pythagorean Proof" to "Geometric proof diagram of Pythagorean theorem with right triangle and squares",
+        "📜 History: Harappan Unicorn Seal" to "Scholastic archeological sketch of Indus Valley Harappan seal",
+        "⚗️ Chemistry: Water Molecule Model" to "3D molecular model diagram of water H2O with polar bonds",
+        "🪐 Astronomy: Solar System Orbits" to "High contrast diagram of planets orbiting the Sun with elliptical paths",
+        "🛡️ School Crest: DAV Knowledge Crest" to "Prestigious Vedic and scholastic emblem crest with flaming torch of knowledge"
     )
 
     fun startGeneration() {
@@ -103,7 +136,11 @@ fun AiGenerateImageDialog(
         coroutineScope.launch {
             val result = AiImageGeneratorEngine.generateImage(
                 prompt = prompt.trim(),
-                aspectRatio = selectedAspectRatio
+                aspectRatio = selectedAspectRatio,
+                model = selectedModel,
+                customModelId = if (useCustomModel) customModelId.trim() else "",
+                apiKey = customApiKey.trim(),
+                lowTokenMode = lowTokenMode
             )
             isGenerating = false
             if (result.isSuccess) {
@@ -112,16 +149,7 @@ fun AiGenerateImageDialog(
             } else {
                 val ex = result.exceptionOrNull()
                 val rawMsg = ex?.localizedMessage ?: ex?.message ?: "Failed to generate image."
-                errorMessage = when {
-                    rawMsg.contains("firebasevertexai.googleapis.com", ignoreCase = true) ||
-                    rawMsg.contains("ServiceDisabledException", ignoreCase = true) -> {
-                        "Vertex AI in Firebase was just provisioned! Cloud API propagation usually takes 1–2 minutes. Please tap Generate again in a moment."
-                    }
-                    rawMsg.contains("quota", ignoreCase = true) -> {
-                        "AI generation rate limit reached. Please try again shortly."
-                    }
-                    else -> rawMsg
-                }
+                errorMessage = rawMsg
             }
         }
     }
@@ -134,7 +162,11 @@ fun AiGenerateImageDialog(
         coroutineScope.launch {
             val result = AiImageGeneratorEngine.editImage(
                 inputBitmap = currentBmp,
-                editInstruction = editInstruction.trim()
+                editInstruction = editInstruction.trim(),
+                model = selectedModel,
+                customModelId = if (useCustomModel) customModelId.trim() else "",
+                apiKey = customApiKey.trim(),
+                lowTokenMode = lowTokenMode
             )
             isGenerating = false
             if (result.isSuccess) {
@@ -183,11 +215,23 @@ fun AiGenerateImageDialog(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Powered by Firebase AI Logic (${AiImageGeneratorEngine.MODEL_NAME})",
+                        text = "Inference Router ($activeModelDisplayName)",
                         color = DavTextSecondary,
-                        fontSize = 10.sp
+                        fontSize = 11.sp
                     )
                 }
+                IconButton(
+                    onClick = { showSettings = !showSettings },
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = "Inference Router Settings",
+                        tint = if (showSettings) DavBrandRoyalBlue else DavTextMuted,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(4.dp))
                 IconButton(
                     onClick = onDismiss,
                     enabled = !isGenerating,
@@ -207,7 +251,276 @@ fun AiGenerateImageDialog(
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
             ) {
+                // Token Status Badge
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (isKeyActive) Color(0xFFF0FDF4) else Color(0xFFFEF2F2))
+                        .border(1.dp, if (isKeyActive) Color(0xFFBBF7D0) else Color(0xFFFECACA), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isKeyActive) Icons.Default.Shield else Icons.Default.WarningAmber,
+                        contentDescription = null,
+                        tint = if (isKeyActive) Color(0xFF15803D) else Color(0xFFDC2626),
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = when {
+                            customApiKey.isNotBlank() -> "Using In-App Token (Direct Inference Router)"
+                            secretsPanelKey.isNotBlank() -> "Using Secrets Panel Token (BuildConfig)"
+                            else -> "No Token Configured: Add HUGGINGFACE_API_KEY in Secrets panel or settings"
+                        },
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = if (isKeyActive) Color(0xFF166534) else Color(0xFF991B1B)
+                    )
+                }
+
+                // Settings Accordion
+                AnimatedVisibility(visible = showSettings) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(DavSurfaceElevated)
+                            .border(1.dp, DavBorder, RoundedCornerShape(12.dp))
+                            .padding(12.dp)
+                    ) {
+                        // Lowest Token Mode Toggle
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                Icon(
+                                    imageVector = Icons.Default.Bolt,
+                                    contentDescription = null,
+                                    tint = Color(0xFFD97706),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Column {
+                                    Text(
+                                        text = "Lowest Token Usage Mode",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = DavTextPrimary
+                                    )
+                                    Text(
+                                        text = "Truncates prompt tokens & uses 1-4 step fast distillation",
+                                        fontSize = 10.sp,
+                                        color = DavTextMuted
+                                    )
+                                }
+                            }
+                            Switch(
+                                checked = lowTokenMode,
+                                onCheckedChange = {
+                                    lowTokenMode = it
+                                    sessionManager.setLowTokenModeEnabled(it)
+                                },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = Color(0xFF15803D)
+                                )
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Personal API Token Override Section
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Key,
+                                contentDescription = null,
+                                tint = DavBrandRoyalBlue,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Hugging Face User Token (Optional Override)",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = DavTextPrimary
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Primary token is loaded from AI Studio Secrets panel. You can enter an override here.",
+                            fontSize = 10.sp,
+                            color = DavTextSecondary
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        OutlinedTextField(
+                            value = customApiKey,
+                            onValueChange = {
+                                customApiKey = it
+                                sessionManager.setHuggingFaceApiKey(it)
+                            },
+                            placeholder = { Text("hf_xxxxxxxxxxxxxxxxxxxx", fontSize = 11.sp, color = DavTextMuted) },
+                            singleLine = true,
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White
+                            )
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Custom Model Override Section
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Extension,
+                                contentDescription = null,
+                                tint = DavBrandRoyalBlue,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Custom Model Repository (Optional)",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = DavTextPrimary
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        OutlinedTextField(
+                            value = customModelId,
+                            onValueChange = {
+                                customModelId = it
+                                sessionManager.setHuggingFaceCustomModel(it)
+                                if (it.isNotBlank()) {
+                                    useCustomModel = true
+                                }
+                            },
+                            placeholder = { Text("e.g. stabilityai/sdxl-turbo", fontSize = 11.sp, color = DavTextMuted) },
+                            singleLine = true,
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White
+                            )
+                        )
+                    }
+                }
+
                 if (generatedBitmap == null) {
+                    // Lowest-Token Mode Active Indicator Badge
+                    if (lowTokenMode) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFFFEF3C7))
+                                .border(1.dp, Color(0xFFFDE68A), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 8.dp, vertical = 5.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.Bolt, contentDescription = null, tint = Color(0xFFD97706), modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Direct Router: 1–4 step fast distillation, minimal token usage",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF92400E)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+
+                    // Model Selection Chips
+                    Text(
+                        text = "AI DIFFUSION MODEL",
+                        color = DavBrandRoyalBlue,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        HuggingFaceModel.entries.forEach { modelOption ->
+                            val isSelected = !useCustomModel && selectedModel == modelOption
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isSelected) DavBrandRoyalBlue else DavSurfaceElevated)
+                                    .border(
+                                        1.dp,
+                                        if (isSelected) DavBrandRoyalBlue else DavBorder,
+                                        RoundedCornerShape(8.dp)
+                                    )
+                                    .clickable(enabled = !isGenerating) {
+                                        useCustomModel = false
+                                        selectedModel = modelOption
+                                        sessionManager.setHuggingFaceModel(modelOption.id)
+                                    }
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                                    .testTag("model_${modelOption.name}")
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (modelOption.isLowestTokenTier) {
+                                        Icon(
+                                            imageVector = Icons.Default.Bolt,
+                                            contentDescription = null,
+                                            tint = if (isSelected) Color.Yellow else Color(0xFFD97706),
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                    }
+                                    Text(
+                                        text = modelOption.displayName,
+                                        color = if (isSelected) Color.White else DavTextPrimary,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                    )
+                                }
+                            }
+                        }
+
+                        // Custom Model Chip
+                        val isCustomSelected = useCustomModel
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isCustomSelected) DavBrandRoyalBlue else DavSurfaceElevated)
+                                .border(
+                                    1.dp,
+                                    if (isCustomSelected) DavBrandRoyalBlue else DavBorder,
+                                    RoundedCornerShape(8.dp)
+                                )
+                                .clickable(enabled = !isGenerating) {
+                                    useCustomModel = true
+                                    showSettings = true
+                                }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                                .testTag("model_custom")
+                        ) {
+                            Text(
+                                text = if (customModelId.isNotBlank()) "Custom: ${customModelId.take(14)}..." else "Custom Model...",
+                                color = if (isCustomSelected) Color.White else DavTextPrimary,
+                                fontSize = 11.sp,
+                                fontWeight = if (isCustomSelected) FontWeight.Bold else FontWeight.Medium
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
                     Text(
                         text = "Enter a concept description or choose a scholastic inspiration chip below:",
                         color = DavTextSecondary,
@@ -225,7 +538,7 @@ fun AiGenerateImageDialog(
                         },
                         placeholder = {
                             Text(
-                                text = "e.g. Structure of DNA double helix with colored nitrogenous base pairs...",
+                                text = "e.g. Structure of DNA double helix with colored base pairs...",
                                 color = DavTextMuted,
                                 fontSize = 13.sp
                             )
@@ -303,7 +616,6 @@ fun AiGenerateImageDialog(
 
                     Spacer(modifier = Modifier.height(6.dp))
 
-                    // Horizontal chips row
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -358,81 +670,75 @@ fun AiGenerateImageDialog(
                         text = "Prompt: \"$prompt\"",
                         color = DavTextSecondary,
                         fontSize = 12.sp,
-                        maxLines = 2
+                        lineHeight = 16.sp,
+                        modifier = Modifier.padding(horizontal = 4.dp)
                     )
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
-                    // Toggle refinement/editing mode
-                    if (!isEditingMode) {
-                        OutlinedButton(
-                            onClick = { isEditingMode = true },
-                            enabled = !isGenerating,
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("toggle_refine_button")
-                        ) {
+                    // Refinement & Image Editing Accordion
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(DavSurfaceElevated)
+                            .clickable { isEditingMode = !isEditingMode }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
                                 imageVector = Icons.Default.AutoFixHigh,
                                 contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = DavBrandRoyalBlue
+                                tint = DavBrandRoyalBlue,
+                                modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Refine / Edit with Gemini AI", color = DavBrandRoyalBlue, fontSize = 12.sp)
+                            Text("Refine / Edit with Inference Router", color = DavBrandRoyalBlue, fontSize = 12.sp)
                         }
-                    } else {
-                        // In-place refinement input
+                        Text(if (isEditingMode) "Hide" else "Show", color = DavTextMuted, fontSize = 11.sp)
+                    }
+
+                    AnimatedVisibility(visible = isEditingMode) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(DavSurfaceElevated)
-                                .border(1.dp, DavBorder, RoundedCornerShape(10.dp))
-                                .padding(10.dp)
+                                .padding(top = 8.dp)
                         ) {
-                            Text(
-                                text = "Refinement instruction (image-to-image):",
-                                color = DavTextPrimary,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
                             OutlinedTextField(
                                 value = editInstruction,
                                 onValueChange = { editInstruction = it },
                                 placeholder = {
                                     Text(
-                                        text = "e.g. Add schematic labels, make background dark...",
-                                        fontSize = 12.sp,
-                                        color = DavTextMuted
+                                        "e.g. Add clear colored labels...",
+                                        color = DavTextMuted,
+                                        fontSize = 12.sp
                                     )
                                 },
-                                singleLine = false,
                                 maxLines = 2,
                                 enabled = !isGenerating,
                                 shape = RoundedCornerShape(8.dp),
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedContainerColor = Color.White,
-                                    unfocusedContainerColor = Color.White,
-                                    focusedBorderColor = DavBrandRoyalBlue,
-                                    unfocusedBorderColor = DavBorder,
-                                    focusedTextColor = DavTextPrimary,
-                                    unfocusedTextColor = DavTextPrimary
+                                    focusedContainerColor = DavCanvasLight,
+                                    unfocusedContainerColor = DavCanvasLight
                                 ),
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .testTag("refine_instruction_input")
+                                    .testTag("ai_image_refine_input")
                             )
-                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Spacer(modifier = Modifier.height(6.dp))
+
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.End
                             ) {
                                 OutlinedButton(
-                                    onClick = { isEditingMode = false },
-                                    enabled = !isGenerating,
+                                    onClick = {
+                                        editInstruction = ""
+                                        isEditingMode = false
+                                    },
                                     shape = RoundedCornerShape(8.dp),
                                     modifier = Modifier.height(36.dp)
                                 ) {
@@ -483,16 +789,20 @@ fun AiGenerateImageDialog(
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
                             text = if (isEditingMode) {
-                                "Refining visual representation with Gemini AI..."
+                                "Refining visual representation with direct Inference Router..."
                             } else {
-                                "Synthesizing visual representation with Gemini ${AiImageGeneratorEngine.MODEL_NAME}..."
+                                "Synthesizing with $activeModelDisplayName (Inference Router)..."
                             },
                             color = DavBrandRoyalBlue,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Medium
                         )
                         Text(
-                            text = "Educational synthesis typically completes within 30–45s",
+                            text = if (selectedModel == HuggingFaceModel.SDXL_TURBO) {
+                                "⚡ Ultra-low 1-step real-time generation (typically 3–8s)"
+                            } else {
+                                "Low-token direct inference typically completes within 10–20s"
+                            },
                             color = DavTextMuted,
                             fontSize = 10.sp
                         )

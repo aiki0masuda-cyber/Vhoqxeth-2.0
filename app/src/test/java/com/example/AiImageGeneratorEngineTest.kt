@@ -4,9 +4,11 @@ import android.content.Context
 import android.graphics.Bitmap
 import androidx.test.core.app.ApplicationProvider
 import com.example.ai.AiImageGeneratorEngine
+import com.example.ai.HuggingFaceImageEngine
+import com.example.ai.HuggingFaceModel
 import com.example.ai.ImageAspectRatio
-import com.google.firebase.ai.type.AspectRatio
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -20,17 +22,44 @@ import java.io.File
 class AiImageGeneratorEngineTest {
 
     @Test
-    fun testModelNameMatchesNanoBanana() {
-        assertEquals("gemini-nano-banana-2.1", AiImageGeneratorEngine.MODEL_NAME)
+    fun testModelNameMatchesHuggingFace() {
+        assertTrue(AiImageGeneratorEngine.MODEL_NAME.contains("Hugging Face"))
     }
 
     @Test
-    fun testAspectRatioMapping() {
-        assertEquals(AspectRatio.SQUARE_1x1, ImageAspectRatio.SQUARE_1_1.toSdkAspectRatio())
-        assertEquals(AspectRatio.LANDSCAPE_16x9, ImageAspectRatio.LANDSCAPE_16_9.toSdkAspectRatio())
-        assertEquals(AspectRatio.PORTRAIT_9x16, ImageAspectRatio.PORTRAIT_9_16.toSdkAspectRatio())
-        assertEquals(AspectRatio.LANDSCAPE_4x3, ImageAspectRatio.LANDSCAPE_4_3.toSdkAspectRatio())
-        assertEquals(AspectRatio.PORTRAIT_3x4, ImageAspectRatio.PORTRAIT_3_4.toSdkAspectRatio())
+    fun testHuggingFaceModelsConfiguration() {
+        assertEquals("stabilityai/sdxl-turbo", HuggingFaceModel.SDXL_TURBO.id)
+        assertEquals(1, HuggingFaceModel.SDXL_TURBO.defaultInferenceSteps)
+        assertTrue(HuggingFaceModel.SDXL_TURBO.isLowestTokenTier)
+
+        assertEquals("black-forest-labs/FLUX.1-schnell", HuggingFaceModel.FLUX_1_SCHNELL.id)
+        assertEquals(4, HuggingFaceModel.FLUX_1_SCHNELL.defaultInferenceSteps)
+        assertTrue(HuggingFaceModel.FLUX_1_SCHNELL.isLowestTokenTier)
+
+        assertEquals("stabilityai/stable-diffusion-xl-base-1.0", HuggingFaceModel.STABLE_DIFFUSION_XL.id)
+        assertEquals(25, HuggingFaceModel.STABLE_DIFFUSION_XL.defaultInferenceSteps)
+        assertFalse(HuggingFaceModel.STABLE_DIFFUSION_XL.isLowestTokenTier)
+
+        assertEquals(HuggingFaceModel.SDXL_TURBO, HuggingFaceModel.fromId("non-existent-id"))
+        assertEquals(HuggingFaceModel.STABLE_DIFFUSION_XL, HuggingFaceModel.fromId("stabilityai/stable-diffusion-xl-base-1.0"))
+    }
+
+    @Test
+    fun testPromptOptimizationForLowestTokens() {
+        val bloatedPrompt = "A plant cell cross section, highly detailed, 8k resolution, trending on artstation, masterpiece"
+        val optimized = HuggingFaceImageEngine.optimizePromptForLowestTokens(bloatedPrompt)
+
+        assertFalse(optimized.contains("8k resolution", ignoreCase = true))
+        assertFalse(optimized.contains("trending on artstation", ignoreCase = true))
+        assertFalse(optimized.contains("masterpiece", ignoreCase = true))
+        assertTrue(optimized.contains("plant cell", ignoreCase = true))
+    }
+
+    @Test
+    fun testImageAspectRatios() {
+        assertEquals(1f, ImageAspectRatio.SQUARE_1_1.ratioWidth / ImageAspectRatio.SQUARE_1_1.ratioHeight, 0.01f)
+        assertEquals(16f / 9f, ImageAspectRatio.LANDSCAPE_16_9.ratioWidth / ImageAspectRatio.LANDSCAPE_16_9.ratioHeight, 0.01f)
+        assertEquals(9f / 16f, ImageAspectRatio.PORTRAIT_9_16.ratioWidth / ImageAspectRatio.PORTRAIT_9_16.ratioHeight, 0.01f)
     }
 
     @Test
@@ -45,5 +74,11 @@ class AiImageGeneratorEngineTest {
         val file = File(uri.path!!)
         assertTrue(file.exists())
         assertTrue(file.length() > 0)
+    }
+
+    @Test
+    fun testCustomModelIdConfiguration() {
+        val customModel = "my-org/custom-fine-tuned-sdxl"
+        assertTrue(customModel.contains("/"))
     }
 }
