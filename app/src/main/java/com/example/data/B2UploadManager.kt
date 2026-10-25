@@ -270,6 +270,7 @@ class B2UploadManager(
                 .url(uploadUrl)
                 .put(countingBody)
                 .header("Content-Type", contentType)
+                .header("x-amz-content-sha256", "UNSIGNED-PAYLOAD")
                 .build()
 
             val call = client.newCall(request)
@@ -280,8 +281,13 @@ class B2UploadManager(
                     if (!response.isSuccessful) {
                         val body = response.body?.string().orEmpty()
                         Log.w(TAG, "S3 PUT status ${response.code}: $body")
+                        val message = if (response.code == 403) {
+                            "S3 PUT 403 Forbidden: Backblaze B2 Application Key lacks 'writeFiles' capability for bucket. Verify permissions in Backblaze B2 Console -> App Keys."
+                        } else {
+                            "S3 PUT failed with HTTP ${response.code}: ${response.message}"
+                        }
                         return@withContext Result.failure(
-                            IOException("S3 PUT failed with HTTP ${response.code}: ${response.message}")
+                            IOException(message)
                         )
                     }
                     Log.i(TAG, "File binary streamed successfully to Backblaze B2 (uploadId=$uploadId)")
@@ -298,7 +304,8 @@ class B2UploadManager(
     }
 
     /**
-     * Executes the complete two-step pipeline and returns both the initial 24h download link and storage key.
+     * Executes the complete two-step pipeline with 3-attempt retry loop,
+     * returning both the initial 24h download link and storage key.
      */
     suspend fun executeCompleteUploadWithKey(
         uploadId: String,
@@ -311,43 +318,52 @@ class B2UploadManager(
         onStateChanged: (UploadState) -> Unit
     ): Result<UploadCompletion> {
         val targetEndpoint = getEffectiveWorkerEndpoint(workerEndpoint)
-        onStateChanged(UploadState.FetchingTicket)
+        var lastErr = "Failed to upload to Backblaze B2"
+        val maxAttempts = 3
 
-        val ticketResult = fetchUploadTicket(
-            workerEndpoint = targetEndpoint,
-            filename = filename,
-            contentType = contentType
-        )
-
-        if (ticketResult.isFailure) {
-            val err = ticketResult.exceptionOrNull()?.message ?: "Failed to get upload authorization"
-            onStateChanged(UploadState.Error(err))
-            return Result.failure(Exception(err))
-        }
-
-        val ticket = ticketResult.getOrThrow()
-        onStateChanged(UploadState.Uploading(progress = 0f, bytesWritten = 0L, totalBytes = fileSizeBytes))
-
-        val uploadResult = streamFileToPresignedUrl(
-            uploadId = uploadId,
-            uploadUrl = ticket.uploadUrl,
-            contentResolver = contentResolver,
-            fileUri = fileUri,
-            contentType = contentType,
-            totalSizeBytes = fileSizeBytes,
-            onProgress = { progress, written, total ->
-                onStateChanged(UploadState.Uploading(progress, written, total))
+        for (attempt in 1..maxAttempts) {
+            if (attempt > 1) {
+                kotlinx.coroutines.delay(400L * attempt)
+                Log.d(TAG, "Retrying upload to B2 (attempt $attempt/$maxAttempts)...")
             }
-        )
+            onStateChanged(UploadState.FetchingTicket)
 
-        return if (uploadResult.isSuccess) {
-            onStateChanged(UploadState.Success(ticket.temporaryDownloadUrl))
-            Result.success(UploadCompletion(downloadUrl = ticket.temporaryDownloadUrl, key = ticket.key))
-        } else {
-            val err = uploadResult.exceptionOrNull()?.message ?: "Failed to stream binary to storage"
-            onStateChanged(UploadState.Error(err))
-            Result.failure(Exception(err))
+            val ticketResult = fetchUploadTicket(
+                workerEndpoint = targetEndpoint,
+                filename = filename,
+                contentType = contentType
+            )
+
+            if (ticketResult.isFailure) {
+                lastErr = ticketResult.exceptionOrNull()?.message ?: "Failed to get upload authorization"
+                continue
+            }
+
+            val ticket = ticketResult.getOrThrow()
+            onStateChanged(UploadState.Uploading(progress = 0f, bytesWritten = 0L, totalBytes = fileSizeBytes))
+
+            val uploadResult = streamFileToPresignedUrl(
+                uploadId = uploadId,
+                uploadUrl = ticket.uploadUrl,
+                contentResolver = contentResolver,
+                fileUri = fileUri,
+                contentType = contentType,
+                totalSizeBytes = fileSizeBytes,
+                onProgress = { progress, written, total ->
+                    onStateChanged(UploadState.Uploading(progress, written, total))
+                }
+            )
+
+            if (uploadResult.isSuccess) {
+                onStateChanged(UploadState.Success(ticket.temporaryDownloadUrl))
+                return Result.success(UploadCompletion(downloadUrl = ticket.temporaryDownloadUrl, key = ticket.key))
+            } else {
+                lastErr = uploadResult.exceptionOrNull()?.message ?: "S3 PUT upload failed"
+            }
         }
+
+        onStateChanged(UploadState.Error(lastErr))
+        return Result.failure(IOException(lastErr))
     }
 
     /**

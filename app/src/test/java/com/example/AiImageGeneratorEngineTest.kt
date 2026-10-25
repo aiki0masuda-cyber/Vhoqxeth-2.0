@@ -7,9 +7,12 @@ import com.example.ai.AiImageGeneratorEngine
 import com.example.ai.HuggingFaceImageEngine
 import com.example.ai.HuggingFaceModel
 import com.example.ai.ImageAspectRatio
+import com.example.ai.ImageGenerationResult
+import com.example.data.B2UploadManager
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -27,20 +30,53 @@ class AiImageGeneratorEngineTest {
     }
 
     @Test
-    fun testHuggingFaceModelsConfiguration() {
-        assertEquals("stabilityai/sdxl-turbo", HuggingFaceModel.SDXL_TURBO.id)
-        assertEquals(1, HuggingFaceModel.SDXL_TURBO.defaultInferenceSteps)
-        assertTrue(HuggingFaceModel.SDXL_TURBO.isLowestTokenTier)
+    fun testEndpointUsesInferenceRouter() {
+        assertEquals("https://router.huggingface.co/hf-inference/models", HuggingFaceImageEngine.ROUTER_INFERENCE_URL)
+        assertFalse(HuggingFaceImageEngine.ROUTER_INFERENCE_URL.contains("api-inference.huggingface.co"))
+    }
 
+    @Test
+    fun testTokenSanitization() {
+        assertEquals("hf_abc123", HuggingFaceImageEngine.sanitizeApiKey("Bearer hf_abc123"))
+        assertEquals("hf_abc123", HuggingFaceImageEngine.sanitizeApiKey("bearer hf_abc123"))
+        assertEquals("hf_abc123", HuggingFaceImageEngine.sanitizeApiKey("  \"hf_abc123\"  "))
+        assertEquals("hf_abc123", HuggingFaceImageEngine.sanitizeApiKey("'hf_abc123'"))
+        assertEquals("hf_abc123", HuggingFaceImageEngine.sanitizeApiKey("   hf_abc123   "))
+    }
+
+    @Test
+    fun testExtractImageCommandPrompt() {
+        assertEquals("solar system orbits", HuggingFaceImageEngine.extractImageCommandPrompt("/imagine solar system orbits"))
+        assertEquals("plant cell diagram", HuggingFaceImageEngine.extractImageCommandPrompt("/draw plant cell diagram"))
+        assertEquals("quantum physics visual", HuggingFaceImageEngine.extractImageCommandPrompt("/image quantum physics visual"))
+        assertEquals("DNA double helix", HuggingFaceImageEngine.extractImageCommandPrompt("generate an image of DNA double helix"))
+        assertEquals("pythagorean proof", HuggingFaceImageEngine.extractImageCommandPrompt("draw a diagram of pythagorean proof"))
+        assertEquals("harappan unicorn seal", HuggingFaceImageEngine.extractImageCommandPrompt("create illustration of harappan unicorn seal"))
+        assertNull(HuggingFaceImageEngine.extractImageCommandPrompt("Hello class, remember the assignment is due tomorrow."))
+    }
+
+    @Test
+    fun testRateLimitMessageMatchesExactDirective() {
+        val expectedMessage = "The free image generation pipeline is currently busy. Please wait a moment and click generate again."
+        assertTrue(expectedMessage.contains("currently busy"))
+        assertTrue(expectedMessage.contains("click generate again"))
+    }
+
+    @Test
+    fun testHuggingFaceModelsConfiguration() {
         assertEquals("black-forest-labs/FLUX.1-schnell", HuggingFaceModel.FLUX_1_SCHNELL.id)
         assertEquals(4, HuggingFaceModel.FLUX_1_SCHNELL.defaultInferenceSteps)
         assertTrue(HuggingFaceModel.FLUX_1_SCHNELL.isLowestTokenTier)
+
+        assertEquals("stabilityai/sdxl-turbo", HuggingFaceModel.SDXL_TURBO.id)
+        assertEquals(1, HuggingFaceModel.SDXL_TURBO.defaultInferenceSteps)
+        assertTrue(HuggingFaceModel.SDXL_TURBO.isLowestTokenTier)
 
         assertEquals("stabilityai/stable-diffusion-xl-base-1.0", HuggingFaceModel.STABLE_DIFFUSION_XL.id)
         assertEquals(25, HuggingFaceModel.STABLE_DIFFUSION_XL.defaultInferenceSteps)
         assertFalse(HuggingFaceModel.STABLE_DIFFUSION_XL.isLowestTokenTier)
 
-        assertEquals(HuggingFaceModel.SDXL_TURBO, HuggingFaceModel.fromId("non-existent-id"))
+        assertEquals(HuggingFaceModel.FLUX_1_SCHNELL, HuggingFaceModel.fromId("non-existent-id"))
         assertEquals(HuggingFaceModel.STABLE_DIFFUSION_XL, HuggingFaceModel.fromId("stabilityai/stable-diffusion-xl-base-1.0"))
     }
 
@@ -80,5 +116,25 @@ class AiImageGeneratorEngineTest {
     fun testCustomModelIdConfiguration() {
         val customModel = "my-org/custom-fine-tuned-sdxl"
         assertTrue(customModel.contains("/"))
+    }
+
+    @Test
+    fun testDynamicFailoverResultDataClass() {
+        val testBitmap = Bitmap.createBitmap(50, 50, Bitmap.Config.ARGB_8888)
+        val result = ImageGenerationResult(
+            bitmap = testBitmap,
+            usedModel = HuggingFaceModel.FLUX_1_SCHNELL,
+            wasFailover = true,
+            failoverMessage = "Auto-routed to FLUX.1 Schnell"
+        )
+        assertTrue(result.wasFailover)
+        assertEquals(HuggingFaceModel.FLUX_1_SCHNELL, result.usedModel)
+        assertEquals("Auto-routed to FLUX.1 Schnell", result.failoverMessage)
+    }
+
+    @Test
+    fun testB2UploadManagerConfig() {
+        val b2 = B2UploadManager()
+        assertTrue(b2.getEffectiveWorkerEndpoint().contains("b2-chat-gatekeeper"))
     }
 }

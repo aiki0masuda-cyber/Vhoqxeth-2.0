@@ -163,6 +163,17 @@ class SessionManager(context: Context) {
         prefs.edit().putBoolean(KEY_LOW_TOKEN_MODE, enabled).commit()
     }
 
+    fun recordDiagnosticLog(tag: String, message: String) {
+        val currentLogs = prefs.getString(KEY_ADMIN_DIAGNOSTIC_LOGS, "") ?: ""
+        val newEntry = "[${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())}] $tag: $message\n"
+        val trimmed = (newEntry + currentLogs).take(3000)
+        prefs.edit().putString(KEY_ADMIN_DIAGNOSTIC_LOGS, trimmed).commit()
+    }
+
+    fun getDiagnosticLogs(): String {
+        return prefs.getString(KEY_ADMIN_DIAGNOSTIC_LOGS, "") ?: ""
+    }
+
     fun clearSession() {
         val accepted = hasAcceptedTerms()
         prefs.edit()
@@ -178,6 +189,7 @@ class SessionManager(context: Context) {
         private const val KEY_HUGGINGFACE_MODEL = "huggingface_model"
         private const val KEY_HUGGINGFACE_CUSTOM_MODEL = "huggingface_custom_model"
         private const val KEY_LOW_TOKEN_MODE = "hf_low_token_mode"
+        private const val KEY_ADMIN_DIAGNOSTIC_LOGS = "admin_diagnostic_logs"
         private const val KEY_IS_LOGGED_IN = "is_logged_in"
         private const val KEY_USER_ID = "user_id"
         private const val KEY_CUSTOM_USER_ID = "custom_user_id"

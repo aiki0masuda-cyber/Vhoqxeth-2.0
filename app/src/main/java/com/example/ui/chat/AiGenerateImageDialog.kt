@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Key
@@ -104,6 +105,10 @@ fun AiGenerateImageDialog(
     var lowTokenMode by remember { mutableStateOf(sessionManager.isLowTokenModeEnabled()) }
     var showSettings by remember { mutableStateOf(false) }
 
+    var isVerifyingToken by remember { mutableStateOf(false) }
+    var tokenVerificationMessage by remember { mutableStateOf<String?>(null) }
+    var isTokenValid by remember { mutableStateOf<Boolean?>(null) }
+
     var isGenerating by remember { mutableStateOf(false) }
     var generatedBitmap by remember { mutableStateOf<Bitmap?>(initialInputBitmap) }
     var editInstruction by remember { mutableStateOf("") }
@@ -111,7 +116,8 @@ fun AiGenerateImageDialog(
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     val secretsPanelKey = remember { HuggingFaceImageEngine.resolveConfiguredApiKey() }
-    val isKeyActive = customApiKey.isNotBlank() || secretsPanelKey.isNotBlank()
+    val effectiveToken = customApiKey.trim().ifBlank { secretsPanelKey }
+    val isKeyActive = effectiveToken.isNotBlank()
 
     val activeModelDisplayName = if (useCustomModel && customModelId.isNotBlank()) {
         customModelId.trim()
@@ -129,12 +135,37 @@ fun AiGenerateImageDialog(
         "🛡️ School Crest: DAV Knowledge Crest" to "Prestigious Vedic and scholastic emblem crest with flaming torch of knowledge"
     )
 
+    fun testTokenValidity() {
+        val tokenToTest = customApiKey.ifBlank { secretsPanelKey }
+        if (tokenToTest.isBlank()) {
+            tokenVerificationMessage = "Please enter a token first."
+            isTokenValid = false
+            return
+        }
+        isVerifyingToken = true
+        tokenVerificationMessage = null
+        isTokenValid = null
+        coroutineScope.launch {
+            val result = HuggingFaceImageEngine.validateToken(tokenToTest)
+            isVerifyingToken = false
+            if (result.isSuccess) {
+                val userName = result.getOrNull() ?: "Authenticated"
+                tokenVerificationMessage = "Verified as @$userName (Inference Ready)"
+                isTokenValid = true
+            } else {
+                val err = result.exceptionOrNull()?.localizedMessage ?: "Invalid token"
+                tokenVerificationMessage = err
+                isTokenValid = false
+            }
+        }
+    }
+
     fun startGeneration() {
         if (prompt.trim().isBlank()) return
         isGenerating = true
         errorMessage = null
         coroutineScope.launch {
-            val result = AiImageGeneratorEngine.generateImage(
+            val result = AiImageGeneratorEngine.generateImageWithFailover(
                 prompt = prompt.trim(),
                 aspectRatio = selectedAspectRatio,
                 model = selectedModel,
@@ -144,8 +175,15 @@ fun AiGenerateImageDialog(
             )
             isGenerating = false
             if (result.isSuccess) {
-                generatedBitmap = result.getOrNull()
+                val output = result.getOrThrow()
+                generatedBitmap = output.bitmap
                 isEditingMode = false
+                // Automatically and silently shift active model chip if failover occurred
+                if (output.wasFailover) {
+                    selectedModel = output.usedModel
+                    useCustomModel = false
+                    sessionManager.setHuggingFaceModel(output.usedModel.id)
+                }
             } else {
                 val ex = result.exceptionOrNull()
                 val rawMsg = ex?.localizedMessage ?: ex?.message ?: "Failed to generate image."
@@ -271,9 +309,9 @@ fun AiGenerateImageDialog(
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = when {
-                            customApiKey.isNotBlank() -> "Using In-App Token (Direct Inference Router)"
-                            secretsPanelKey.isNotBlank() -> "Using Secrets Panel Token (BuildConfig)"
-                            else -> "No Token Configured: Add HUGGINGFACE_API_KEY in Secrets panel or settings"
+                            customApiKey.isNotBlank() -> "Using In-App Token (router.huggingface.co)"
+                            secretsPanelKey.isNotBlank() -> "Using Secrets Panel Token (router.huggingface.co)"
+                            else -> "No Token Configured: Add HUGGINGFACE_API_KEY in Secrets or settings"
                         },
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Medium,
@@ -345,7 +383,7 @@ fun AiGenerateImageDialog(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "Hugging Face User Token (Optional Override)",
+                                text = "Hugging Face User Token",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = DavTextPrimary
@@ -353,7 +391,7 @@ fun AiGenerateImageDialog(
                         }
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Primary token is loaded from AI Studio Secrets panel. You can enter an override here.",
+                            text = "Paste your free token from huggingface.co/settings/tokens (Bearer prefix will be cleaned automatically).",
                             fontSize = 10.sp,
                             color = DavTextSecondary
                         )
@@ -361,10 +399,14 @@ fun AiGenerateImageDialog(
                         OutlinedTextField(
                             value = customApiKey,
                             onValueChange = {
-                                customApiKey = it
-                                sessionManager.setHuggingFaceApiKey(it)
+                                val sanitized = HuggingFaceImageEngine.sanitizeApiKey(it)
+                                customApiKey = sanitized
+                                sessionManager.setHuggingFaceApiKey(sanitized)
+                                tokenVerificationMessage = null
+                                isTokenValid = null
                             },
-                            placeholder = { Text("hf_xxxxxxxxxxxxxxxxxxxx", fontSize = 11.sp, color = DavTextMuted) },
+                            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                            placeholder = { Text(if (secretsPanelKey.isNotBlank()) "●●●●●●●● (Loaded from Secrets Panel)" else "hf_xxxxxxxxxxxxxxxxxxxx", fontSize = 11.sp, color = DavTextMuted) },
                             singleLine = true,
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.fillMaxWidth(),
@@ -373,6 +415,34 @@ fun AiGenerateImageDialog(
                                 unfocusedContainerColor = Color.White
                             )
                         )
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedButton(
+                                onClick = { testTokenValidity() },
+                                enabled = !isVerifyingToken && (customApiKey.isNotBlank() || secretsPanelKey.isNotBlank()),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.height(32.dp)
+                            ) {
+                                if (isVerifyingToken) {
+                                    CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 2.dp)
+                                } else {
+                                    Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(12.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Verify Token", fontSize = 11.sp)
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            if (tokenVerificationMessage != null) {
+                                Text(
+                                    text = tokenVerificationMessage!!,
+                                    fontSize = 10.sp,
+                                    color = if (isTokenValid == true) Color(0xFF15803D) else Color(0xFFDC2626),
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
 
                         Spacer(modifier = Modifier.height(10.dp))
 
@@ -538,7 +608,7 @@ fun AiGenerateImageDialog(
                         },
                         placeholder = {
                             Text(
-                                text = "e.g. Structure of DNA double helix with colored base pairs...",
+                                text = "e.g. Educational concept illustration explaining PCM+IT...",
                                 color = DavTextMuted,
                                 fontSize = 13.sp
                             )
@@ -809,31 +879,56 @@ fun AiGenerateImageDialog(
                     }
                 }
 
-                // Error Message Display
+                // Error Message Display with Clear Actionable Steps
                 if (errorMessage != null) {
                     Spacer(modifier = Modifier.height(10.dp))
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(10.dp))
                             .background(Color(0xFFFEF2F2))
-                            .border(1.dp, Color(0xFFFCA5A5), RoundedCornerShape(8.dp))
-                            .padding(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .border(1.dp, Color(0xFFFCA5A5), RoundedCornerShape(10.dp))
+                            .padding(12.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.WarningAmber,
-                            contentDescription = null,
-                            tint = Color(0xFFDC2626),
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.WarningAmber,
+                                contentDescription = null,
+                                tint = Color(0xFFDC2626),
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = if (errorMessage!!.contains("Auth", ignoreCase = true) || errorMessage!!.contains("401")) {
+                                    "Hugging Face Authentication Required"
+                                } else {
+                                    "Generation Notice"
+                                },
+                                color = Color(0xFF991B1B),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
                         Text(
                             text = errorMessage ?: "",
                             color = Color(0xFFB91C1C),
                             fontSize = 12.sp,
-                            modifier = Modifier.weight(1f)
+                            lineHeight = 16.sp
                         )
+                        if (errorMessage!!.contains("Auth", ignoreCase = true) || errorMessage!!.contains("401") || !isKeyActive) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            OutlinedButton(
+                                onClick = { showSettings = true },
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = DavBrandRoyalBlue),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.height(34.dp)
+                            ) {
+                                Icon(imageVector = Icons.Default.Key, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Open Token Settings", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
                     }
                 }
             }

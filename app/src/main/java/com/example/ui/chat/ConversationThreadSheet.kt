@@ -90,6 +90,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.ai.AiImageGeneratorEngine
+import com.example.ai.HuggingFaceImageEngine
+import com.example.ai.HuggingFaceModel
 import com.example.data.B2UploadManager
 import com.example.data.MeshChatRepository
 import com.example.data.SessionManager
@@ -791,10 +793,94 @@ fun ConversationThreadSheet(
                                     uploadStates.remove(tempId)
                                 }
                             } else {
-                                isSending = true
-                                coroutineScope.launch {
-                                    chatRepository.sendMessage(currentThread.id, currentUser, text)
-                                    isSending = false
+                                val imageCommandPrompt = HuggingFaceImageEngine.extractImageCommandPrompt(text)
+                                if (imageCommandPrompt != null) {
+                                    // User typed /imagine, /draw, /image, or natural language generation request
+                                    isSending = true
+                                    coroutineScope.launch {
+                                        try {
+                                            Toast.makeText(
+                                                context,
+                                                "🎨 Synthesizing illustration: \"$imageCommandPrompt\" with FLUX.1 Schnell...",
+                                                Toast.LENGTH_LONG
+                                            ).show()
+
+                                            val result = AiImageGeneratorEngine.generateImage(
+                                                prompt = imageCommandPrompt,
+                                                model = HuggingFaceModel.FLUX_1_SCHNELL
+                                            )
+
+                                            if (result.isSuccess) {
+                                                val bitmap = result.getOrNull()!!
+                                                val cachedUri = AiImageGeneratorEngine.saveBitmapToLocalCache(
+                                                    context = context,
+                                                    bitmap = bitmap,
+                                                    prefix = "chat_ai_${currentThread.id}"
+                                                )
+                                                val tempId = "ai_upload_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}"
+                                                val attName = "illustration_${System.currentTimeMillis()}.png"
+                                                val currentWorkerUrl = sessionManager.getCloudflareWorkerUrl()
+
+                                                val uploadResult = b2UploadManager.executeCompleteUploadWithKey(
+                                                    uploadId = tempId,
+                                                    workerEndpoint = currentWorkerUrl,
+                                                    contentResolver = context.contentResolver,
+                                                    fileUri = cachedUri,
+                                                    filename = attName,
+                                                    contentType = "image/png",
+                                                    fileSizeBytes = 0L,
+                                                    onStateChanged = { st ->
+                                                        uploadStates[tempId] = st
+                                                    }
+                                                )
+
+                                                val (finalDownloadUrl, finalKey) = if (uploadResult.isSuccess) {
+                                                    val completion = uploadResult.getOrThrow()
+                                                    completion.downloadUrl to completion.key
+                                                } else {
+                                                    val failMsg = uploadResult.exceptionOrNull()?.message ?: "Upload to B2 failed."
+                                                    sessionManager.recordDiagnosticLog("B2_PUT_ERROR", failMsg)
+                                                    withContext(Dispatchers.Main) {
+                                                        Toast.makeText(
+                                                            context,
+                                                            "Storage Notice: Sent via device cache. (B2: verify 'writeFiles' permission in B2 console)",
+                                                            Toast.LENGTH_LONG
+                                                        ).show()
+                                                    }
+                                                    cachedUri.toString() to null
+                                                }
+
+                                                chatRepository.sendFileMessage(
+                                                    threadId = currentThread.id,
+                                                    senderProfile = currentUser,
+                                                    content = "🎨 Prompt: \"$imageCommandPrompt\"",
+                                                    attachmentUri = finalDownloadUrl,
+                                                    attachmentName = attName,
+                                                    attachmentType = "IMAGE",
+                                                    attachmentSize = "AI Generated PNG",
+                                                    attachmentKey = finalKey
+                                                )
+                                                uploadStates.remove(tempId)
+                                            } else {
+                                                val ex = result.exceptionOrNull()
+                                                val errMsg = ex?.localizedMessage ?: "Failed to generate image."
+                                                Toast.makeText(context, errMsg, Toast.LENGTH_LONG).show()
+                                                chatRepository.sendMessage(
+                                                    currentThread.id,
+                                                    currentUser,
+                                                    "⚠️ [Image Generation]: $errMsg"
+                                                )
+                                            }
+                                        } finally {
+                                            isSending = false
+                                        }
+                                    }
+                                } else {
+                                    isSending = true
+                                    coroutineScope.launch {
+                                        chatRepository.sendMessage(currentThread.id, currentUser, text)
+                                        isSending = false
+                                    }
                                 }
                             }
                         }
@@ -900,6 +986,15 @@ fun ConversationThreadSheet(
                         val completion = uploadResult.getOrThrow()
                         completion.downloadUrl to completion.key
                     } else {
+                        val failMsg = uploadResult.exceptionOrNull()?.message ?: "Upload to B2 failed."
+                        sessionManager.recordDiagnosticLog("B2_MODAL_PUT_ERROR", failMsg)
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(
+                                context,
+                                "Storage Notice: Sent via device cache. (B2: verify 'writeFiles' permission in B2 console)",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
                         cachedUri.toString() to null
                     }
 

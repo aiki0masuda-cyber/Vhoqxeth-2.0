@@ -25,7 +25,18 @@ import java.util.concurrent.TimeUnit
 private const val TAG = "HuggingFaceEngine"
 
 /**
- * Supported open diffusion models, prioritized by lowest token cost.
+ * Result data holder for image generation, recording the actual model that succeeded
+ * so the UI can dynamically update chips on failover.
+ */
+data class ImageGenerationResult(
+    val bitmap: Bitmap,
+    val usedModel: HuggingFaceModel,
+    val wasFailover: Boolean,
+    val failoverMessage: String? = null
+)
+
+/**
+ * Supported open diffusion models, with FLUX.1 Schnell prioritized as the primary high-detail 4-step model.
  */
 enum class HuggingFaceModel(
     val id: String,
@@ -34,18 +45,18 @@ enum class HuggingFaceModel(
     val defaultInferenceSteps: Int,
     val isLowestTokenTier: Boolean
 ) {
-    SDXL_TURBO(
-        id = "stabilityai/sdxl-turbo",
-        displayName = "SDXL Turbo (Lowest Tokens)",
-        description = "Single-step (1 step) real-time diffusion with absolute minimal token cost",
-        defaultInferenceSteps = 1,
-        isLowestTokenTier = true
-    ),
     FLUX_1_SCHNELL(
         id = "black-forest-labs/FLUX.1-schnell",
         displayName = "FLUX.1 Schnell (4-Step Fast)",
-        description = "4-step distilled high-speed model with low compute tokens",
+        description = "High-detail 4-step distilled high-speed generation",
         defaultInferenceSteps = 4,
+        isLowestTokenTier = true
+    ),
+    SDXL_TURBO(
+        id = "stabilityai/sdxl-turbo",
+        displayName = "SDXL Turbo (Lowest Tokens)",
+        description = "Single-step (1 step) real-time diffusion with minimal token cost",
+        defaultInferenceSteps = 1,
         isLowestTokenTier = true
     ),
     STABLE_DIFFUSION_XL(
@@ -65,21 +76,20 @@ enum class HuggingFaceModel(
 
     companion object {
         fun fromId(id: String): HuggingFaceModel {
-            return entries.firstOrNull { it.id == id } ?: SDXL_TURBO
+            return entries.firstOrNull { it.id == id } ?: FLUX_1_SCHNELL
         }
     }
 }
 
 /**
  * Direct client for the official Hugging Face Inference Router
- * with lowest-token prompt optimization and zero serverless intermediaries.
+ * with dynamic auto-failover, lowest-token prompt optimization,
+ * command interception parsing, and 429 rate limit mitigation.
  */
 object HuggingFaceImageEngine {
 
-    // Primary: Hugging Face Inference Router
-    private const val ROUTER_INFERENCE_URL = "https://router.huggingface.co/hf-inference/models"
-    // Secondary fallback: Direct Serverless endpoint
-    private const val FALLBACK_INFERENCE_URL = "https://api-inference.huggingface.co/models"
+    // Primary official Hugging Face Inference Router endpoint
+    const val ROUTER_INFERENCE_URL = "https://router.huggingface.co/hf-inference/models"
 
     private val httpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
@@ -88,6 +98,87 @@ object HuggingFaceImageEngine {
             .readTimeout(90, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
             .build()
+    }
+
+    /**
+     * Inspects incoming chat message text for explicit image generation commands:
+     * - /imagine <prompt>
+     * - /draw <prompt>
+     * - /image <prompt>
+     * - generate an image of <prompt> / generate image of <prompt>
+     * - draw a diagram of <prompt> / draw an illustration of <prompt> / draw <prompt>
+     * - create an illustration of <prompt> / create illustration of <prompt>
+     * Returns the extracted prompt string or null if not an image generation command.
+     */
+    fun extractImageCommandPrompt(messageText: String): String? {
+        val trimmed = messageText.trim()
+        val commandPrefixes = listOf(
+            "/imagine ", "/draw ", "/image ",
+            "/imagine\n", "/draw\n", "/image\n",
+            "generate an image of ", "generate image of ",
+            "generate an illustration of ", "generate illustration of ",
+            "generate a diagram of ", "generate diagram of ",
+            "draw a diagram of ", "draw an illustration of ",
+            "draw a picture of ", "draw an image of ",
+            "create an illustration of ", "create illustration of ",
+            "create a diagram of ", "create diagram of ",
+            "draw "
+        )
+
+        for (prefix in commandPrefixes) {
+            if (trimmed.startsWith(prefix, ignoreCase = true)) {
+                val extracted = trimmed.substring(prefix.length).trim()
+                if (extracted.isNotBlank()) {
+                    return extracted
+                }
+            }
+        }
+        return null
+    }
+
+    /**
+     * Sanitizes API token by stripping accidental leading "Bearer ", quotes, and whitespace.
+     */
+    fun sanitizeApiKey(key: String): String {
+        return key.trim()
+            .removePrefix("Bearer ")
+            .removePrefix("bearer ")
+            .trim()
+            .removeSurrounding("\"")
+            .removeSurrounding("'")
+            .trim()
+    }
+
+    /**
+     * Verifies whether a Hugging Face user access token is valid by querying whoami.
+     */
+    suspend fun validateToken(token: String): Result<String> = withContext(Dispatchers.IO) {
+        val sanitized = sanitizeApiKey(token)
+        if (sanitized.isBlank() || sanitized == "hf_placeholder_key") {
+            return@withContext Result.failure(IllegalArgumentException("Please enter a non-empty Hugging Face token."))
+        }
+        try {
+            val req = Request.Builder()
+                .url("https://huggingface.co/api/whoami-v2")
+                .header("Authorization", "Bearer $sanitized")
+                .get()
+                .build()
+            val res = httpClient.newCall(req).execute()
+            res.use { r ->
+                val body = r.body?.string().orEmpty()
+                if (r.isSuccessful) {
+                    val json = JSONObject(body)
+                    val name = json.optString("name", json.optString("username", "Authenticated User"))
+                    Result.success(name)
+                } else if (r.code == 401 || r.code == 403) {
+                    Result.failure(IOException("Invalid Hugging Face token (HTTP ${r.code}). Please verify your token at huggingface.co/settings/tokens."))
+                } else {
+                    Result.failure(IOException("Verification failed with HTTP ${r.code}: $body"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
     /**
@@ -110,117 +201,175 @@ object HuggingFaceImageEngine {
     }
 
     /**
-     * Generates an image directly via the Hugging Face Inference Router.
-     * No serverless proxies or intermediary requests.
+     * Generates an image with dynamic model failover.
+     * If the requested model throws "Model not supported", 404, or network availability error,
+     * it automatically fails over to FLUX.1 Schnell and returns the active model for UI chip updating.
      */
-    suspend fun generateImage(
+    suspend fun generateImageWithFailover(
         prompt: String,
-        model: HuggingFaceModel = HuggingFaceModel.SDXL_TURBO,
+        preferredModel: HuggingFaceModel = HuggingFaceModel.FLUX_1_SCHNELL,
         customModelId: String = "",
         aspectRatio: ImageAspectRatio = ImageAspectRatio.SQUARE_1_1,
         apiKey: String = "",
         lowTokenMode: Boolean = true
-    ): Result<Bitmap> = withContext(Dispatchers.IO) {
-        try {
-            if (prompt.isBlank()) {
-                return@withContext Result.failure(IllegalArgumentException("Prompt cannot be empty."))
-            }
+    ): Result<ImageGenerationResult> = withContext(Dispatchers.IO) {
+        val candidateModels = mutableListOf<Pair<HuggingFaceModel, String>>()
+        if (customModelId.isNotBlank()) {
+            candidateModels.add(preferredModel to customModelId.trim())
+        } else {
+            candidateModels.add(preferredModel to preferredModel.id)
+        }
 
-            val sanitizedPrompt = if (lowTokenMode) optimizePromptForLowestTokens(prompt) else prompt.trim()
-            val effectiveModelId = customModelId.trim().ifBlank { model.id }
-            val effectiveDisplayName = if (customModelId.isNotBlank()) customModelId.trim() else model.displayName
+        // Automatic fallback sequence prioritizing FLUX.1 Schnell
+        if (preferredModel != HuggingFaceModel.FLUX_1_SCHNELL && customModelId.isBlank()) {
+            candidateModels.add(HuggingFaceModel.FLUX_1_SCHNELL to HuggingFaceModel.FLUX_1_SCHNELL.id)
+        }
+        if (preferredModel != HuggingFaceModel.SDXL_TURBO) {
+            candidateModels.add(HuggingFaceModel.SDXL_TURBO to HuggingFaceModel.SDXL_TURBO.id)
+        }
+        if (preferredModel != HuggingFaceModel.STABLE_DIFFUSION_XL) {
+            candidateModels.add(HuggingFaceModel.STABLE_DIFFUSION_XL to HuggingFaceModel.STABLE_DIFFUSION_XL.id)
+        }
 
-            // Calculate lowest inference steps
-            val effectiveSteps = when {
-                lowTokenMode && effectiveModelId.contains("turbo", ignoreCase = true) -> 1
-                lowTokenMode && effectiveModelId.contains("schnell", ignoreCase = true) -> 4
-                lowTokenMode -> 4.coerceAtMost(model.defaultInferenceSteps)
-                effectiveModelId.contains("turbo", ignoreCase = true) -> 1
-                effectiveModelId.contains("schnell", ignoreCase = true) -> 4
-                effectiveModelId.contains("xl", ignoreCase = true) -> 25
-                else -> model.defaultInferenceSteps
-            }
-
-            val enrichedPrompt = if (lowTokenMode) {
-                when (aspectRatio) {
-                    ImageAspectRatio.LANDSCAPE_16_9 -> "$sanitizedPrompt, 16:9 ratio"
-                    ImageAspectRatio.PORTRAIT_9_16 -> "$sanitizedPrompt, 9:16 ratio"
-                    else -> sanitizedPrompt
+        var lastError: Throwable? = null
+        for (i in candidateModels.indices) {
+            val (candidateModel, modelId) = candidateModels[i]
+            val isFailover = i > 0
+            try {
+                Log.d(TAG, "Executing inference: model=${candidateModel.displayName} (id=$modelId, failover=$isFailover)")
+                val bitmapResult = executeDirectInference(
+                    prompt = prompt,
+                    model = candidateModel,
+                    customModelId = if (candidateModel == preferredModel && customModelId.isNotBlank()) customModelId else modelId,
+                    aspectRatio = aspectRatio,
+                    apiKey = apiKey,
+                    lowTokenMode = lowTokenMode
+                )
+                if (bitmapResult.isSuccess) {
+                    val bitmap = bitmapResult.getOrThrow()
+                    Log.i(TAG, "Inference succeeded with ${candidateModel.displayName} (wasFailover=$isFailover)")
+                    return@withContext Result.success(
+                        ImageGenerationResult(
+                            bitmap = bitmap,
+                            usedModel = candidateModel,
+                            wasFailover = isFailover,
+                            failoverMessage = if (isFailover) "Auto-routed to ${candidateModel.displayName}" else null
+                        )
+                    )
+                } else {
+                    lastError = bitmapResult.exceptionOrNull()
+                    Log.w(TAG, "Model $modelId failed: ${lastError?.message}. Attempting next model...")
                 }
-            } else {
-                when (aspectRatio) {
-                    ImageAspectRatio.LANDSCAPE_16_9 -> "$sanitizedPrompt, 16:9 wide educational diagram, high resolution"
-                    ImageAspectRatio.PORTRAIT_9_16 -> "$sanitizedPrompt, 9:16 vertical scholastic visual, detailed"
-                    ImageAspectRatio.LANDSCAPE_4_3 -> "$sanitizedPrompt, 4:3 presentation ratio, textbook diagram"
-                    ImageAspectRatio.PORTRAIT_3_4 -> "$sanitizedPrompt, 3:4 tall aspect ratio, vector educational visual"
-                    ImageAspectRatio.SQUARE_1_1 -> "$sanitizedPrompt, 1:1 square ratio, centered scholastic artwork"
-                }
+            } catch (e: Exception) {
+                lastError = e
+                Log.w(TAG, "Model $modelId threw exception: ${e.message}. Attempting next model...")
             }
+        }
 
-            val guidance = if (effectiveModelId.contains("turbo", ignoreCase = true)) 0.0 else 7.5
+        Result.failure(lastError ?: IllegalStateException("All candidate diffusion models failed."))
+    }
 
-            val payloadJson = JSONObject().apply {
-                put("inputs", enrichedPrompt)
-                val parameters = JSONObject().apply {
-                    put("guidance_scale", guidance)
-                    put("num_inference_steps", effectiveSteps)
-                }
-                put("parameters", parameters)
-                val options = JSONObject().apply {
-                    put("wait_for_model", true)
-                    put("use_cache", true)
-                }
-                put("options", options)
+    /**
+     * Direct image generation returning a Bitmap, automatically applying failover behind the scenes.
+     */
+    suspend fun generateImage(
+        prompt: String,
+        model: HuggingFaceModel = HuggingFaceModel.FLUX_1_SCHNELL,
+        customModelId: String = "",
+        aspectRatio: ImageAspectRatio = ImageAspectRatio.SQUARE_1_1,
+        apiKey: String = "",
+        lowTokenMode: Boolean = true
+    ): Result<Bitmap> {
+        return generateImageWithFailover(prompt, model, customModelId, aspectRatio, apiKey, lowTokenMode)
+            .map { it.bitmap }
+    }
+
+    /**
+     * Executes inference directly for a single target model repository.
+     */
+    private suspend fun executeDirectInference(
+        prompt: String,
+        model: HuggingFaceModel,
+        customModelId: String,
+        aspectRatio: ImageAspectRatio,
+        apiKey: String,
+        lowTokenMode: Boolean
+    ): Result<Bitmap> {
+        if (prompt.isBlank()) {
+            return Result.failure(IllegalArgumentException("Prompt cannot be empty."))
+        }
+
+        val sanitizedPrompt = if (lowTokenMode) optimizePromptForLowestTokens(prompt) else prompt.trim()
+        val effectiveModelId = customModelId.trim().ifBlank { model.id }
+        val effectiveDisplayName = if (customModelId.isNotBlank()) customModelId.trim() else model.displayName
+
+        // Calculate lowest inference steps
+        val effectiveSteps = when {
+            lowTokenMode && effectiveModelId.contains("turbo", ignoreCase = true) -> 1
+            lowTokenMode && effectiveModelId.contains("schnell", ignoreCase = true) -> 4
+            lowTokenMode -> 4.coerceAtMost(model.defaultInferenceSteps)
+            effectiveModelId.contains("turbo", ignoreCase = true) -> 1
+            effectiveModelId.contains("schnell", ignoreCase = true) -> 4
+            effectiveModelId.contains("xl", ignoreCase = true) -> 25
+            else -> model.defaultInferenceSteps
+        }
+
+        val enrichedPrompt = if (lowTokenMode) {
+            when (aspectRatio) {
+                ImageAspectRatio.LANDSCAPE_16_9 -> "$sanitizedPrompt, 16:9 ratio"
+                ImageAspectRatio.PORTRAIT_9_16 -> "$sanitizedPrompt, 9:16 ratio"
+                else -> sanitizedPrompt
             }
-
-            val effectiveKey = apiKey.trim().ifBlank { resolveConfiguredApiKey() }
-            val payloadBytes = payloadJson.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
-
-            // Try primary Hugging Face Inference Router endpoint first
-            val primaryUrl = "$ROUTER_INFERENCE_URL/$effectiveModelId"
-            Log.d(TAG, "Requesting Hugging Face Inference Router: $primaryUrl (Model: $effectiveDisplayName, Steps: $effectiveSteps)")
-
-            val requestBuilder = Request.Builder()
-                .url(primaryUrl)
-                .post(payloadBytes)
-                .header("Accept", "image/png, image/jpeg, application/json")
-
-            if (effectiveKey.isNotBlank()) {
-                requestBuilder.header("Authorization", "Bearer $effectiveKey")
+        } else {
+            when (aspectRatio) {
+                ImageAspectRatio.LANDSCAPE_16_9 -> "$sanitizedPrompt, 16:9 wide educational diagram, high resolution"
+                ImageAspectRatio.PORTRAIT_9_16 -> "$sanitizedPrompt, 9:16 vertical scholastic visual, detailed"
+                ImageAspectRatio.LANDSCAPE_4_3 -> "$sanitizedPrompt, 4:3 presentation ratio, textbook diagram"
+                ImageAspectRatio.PORTRAIT_3_4 -> "$sanitizedPrompt, 3:4 tall aspect ratio, vector educational visual"
+                ImageAspectRatio.SQUARE_1_1 -> "$sanitizedPrompt, 1:1 square ratio, centered scholastic artwork"
             }
+        }
 
+        val guidance = if (effectiveModelId.contains("turbo", ignoreCase = true)) 0.0 else 7.5
+
+        val payloadJson = JSONObject().apply {
+            put("inputs", enrichedPrompt)
+            val parameters = JSONObject().apply {
+                put("guidance_scale", guidance)
+                put("num_inference_steps", effectiveSteps)
+            }
+            put("parameters", parameters)
+            val options = JSONObject().apply {
+                put("wait_for_model", true)
+                put("use_cache", true)
+            }
+            put("options", options)
+        }
+
+        val rawKey = apiKey.trim().ifBlank { resolveConfiguredApiKey() }
+        val effectiveKey = sanitizeApiKey(rawKey)
+        val payloadBytes = payloadJson.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+
+        val primaryUrl = "$ROUTER_INFERENCE_URL/$effectiveModelId"
+        val requestBuilder = Request.Builder()
+            .url(primaryUrl)
+            .post(payloadBytes)
+            .header("Accept", "image/png, image/jpeg, application/json")
+
+        if (effectiveKey.isNotBlank()) {
+            requestBuilder.header("Authorization", "Bearer $effectiveKey")
+        }
+
+        return try {
             val bitmap = withTimeout(90_000L) {
-                try {
-                    executeRequestWithRetry(requestBuilder.build(), model)
-                } catch (e: Exception) {
-                    // Fall back to fallback serverless inference URL if router gives 404 or connection issue
-                    val fallbackUrl = "$FALLBACK_INFERENCE_URL/$effectiveModelId"
-                    Log.w(TAG, "Router attempt failed (${e.localizedMessage}), retrying via fallback endpoint: $fallbackUrl")
-                    val fallbackRequest = Request.Builder()
-                        .url(fallbackUrl)
-                        .post(payloadBytes)
-                        .header("Accept", "image/png, image/jpeg, application/json")
-                        .apply {
-                            if (effectiveKey.isNotBlank()) header("Authorization", "Bearer $effectiveKey")
-                        }
-                        .build()
-                    executeRequestWithRetry(fallbackRequest, model)
-                }
+                executeRequestWithRetry(requestBuilder.build(), model)
             }
-
             if (bitmap != null) {
-                Log.i(TAG, "Successfully generated ${bitmap.width}x${bitmap.height} bitmap via $effectiveDisplayName ($effectiveSteps steps)")
                 Result.success(bitmap)
             } else {
-                Result.failure(IllegalStateException("No valid image returned from Hugging Face Inference Router."))
+                Result.failure(IllegalStateException("No valid image binary returned from $effectiveDisplayName."))
             }
-        } catch (e: TimeoutCancellationException) {
-            Log.e(TAG, "Image generation timed out after 90s", e)
-            Result.failure(IllegalStateException("Inference took longer than 90 seconds. Try SDXL Turbo for instant 1-step generation."))
-        } catch (e: CancellationException) {
-            throw e
         } catch (e: Exception) {
-            Log.e(TAG, "Hugging Face Inference Router error: ${e.localizedMessage}", e)
             Result.failure(e)
         }
     }
@@ -231,7 +380,7 @@ object HuggingFaceImageEngine {
     suspend fun editImage(
         inputBitmap: Bitmap,
         editInstruction: String,
-        model: HuggingFaceModel = HuggingFaceModel.SDXL_TURBO,
+        model: HuggingFaceModel = HuggingFaceModel.FLUX_1_SCHNELL,
         customModelId: String = "",
         apiKey: String = "",
         lowTokenMode: Boolean = true
@@ -255,7 +404,8 @@ object HuggingFaceImageEngine {
     }
 
     /**
-     * Executes the HTTP request directly to Hugging Face and handles binary and JSON responses.
+     * Executes the HTTP request directly to Hugging Face and handles binary and JSON responses,
+     * including rate limit 429 error mitigation.
      */
     private suspend fun executeRequestWithRetry(
         request: Request,
@@ -307,19 +457,20 @@ object HuggingFaceImageEngine {
                     }
                 }
 
-                // Handle authorization error
+                // Handle authorization error (HTTP 401 / 403)
                 if (res.code == 401 || res.code == 403) {
                     val errorMsg = try {
-                        JSONObject(responseBodyText).optString("error", "Unauthorized")
+                        val json = JSONObject(responseBodyText)
+                        json.optString("error", json.optString("message", "Unauthorized"))
                     } catch (_: Exception) {
-                        "Invalid or missing Hugging Face User Access Token."
+                        "Invalid credentials."
                     }
-                    throw IOException("Hugging Face Auth: $errorMsg. Please configure HUGGINGFACE_API_KEY in AI Studio Secrets panel or settings.")
+                    throw IOException("Hugging Face Auth Failed (HTTP ${res.code}): $errorMsg. Please check your token from huggingface.co/settings/tokens.")
                 }
 
-                // Handle rate limit
+                // Handle rate limit (HTTP 429) - exact error mitigation directive
                 if (res.code == 429) {
-                    throw IOException("Hugging Face rate limit reached. Please wait a moment or configure your personal API token in Secrets panel.")
+                    throw IOException("The free image generation pipeline is currently busy. Please wait a moment and click generate again.")
                 }
 
                 // Handle general errors
@@ -342,7 +493,7 @@ object HuggingFaceImageEngine {
         return try {
             val field = Class.forName("com.example.BuildConfig").getField("HUGGINGFACE_API_KEY")
             val key = (field.get(null) as? String)?.trim().orEmpty()
-            if (key == "hf_placeholder_key" || key == "MY_NEW_API_KEY_DEFAULT_VALUE") "" else key
+            if (key == "hf_placeholder_key" || key == "MY_NEW_API_KEY_DEFAULT_VALUE") "" else sanitizeApiKey(key)
         } catch (_: Exception) {
             ""
         }

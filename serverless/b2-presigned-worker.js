@@ -1,30 +1,25 @@
 /**
- * Cloudflare Worker / Serverless Edge Function: Backblaze B2 Pre-Signed S3 URL Generator
- * & Lowest-Token Hugging Face AI Image Generation Server Endpoint
+ * Cloudflare Worker: "b2-chat-gatekeeper"
+ * Production-ready S3-Compatible Upload & Download Gatekeeper for Backblaze B2 Storage
  *
- * Dependencies:
- * - npm install @aws-sdk/client-s3 @aws-sdk/s3-request-presigner
+ * BACKBLAZE B2 DASHBOARD CHECKLIST (To prevent HTTP 403 Forbidden):
+ * 1. Log in to https://secure.backblaze.com/b2_buckets.htm
+ * 2. Go to "App Keys" -> "Add a New Application Key".
+ * 3. CRITICAL: Under "Allow access to Bucket(s)", select your bucket.
+ * 4. CRITICAL: Under "Type of Access", ensure "Read and Write" is selected.
+ * 5. Verify the following capabilities are permitted for this key:
+ *    - "writeFiles" (MANDATORY for S3 PUT upload; missing this triggers S3 PUT HTTP 403)
+ *    - "readFiles" (MANDATORY for S3 GET download)
+ *    - "listFiles" (MANDATORY for S3 bucket listing/head requests)
+ *    - "deleteFiles" (Optional for retention cleanup)
+ * 6. Set B2_ENDPOINT format: "s3.<region>.backblazeb2.com" (e.g., "s3.us-west-004.backblazeb2.com")
  *
- * Environment Variables (configured in Cloudflare Worker Dashboard or wrangler.toml):
+ * Environment Variables (in Cloudflare Worker Dashboard or wrangler.toml):
  * - B2_ENDPOINT: Backblaze B2 S3 endpoint, e.g. "s3.us-west-004.backblazeb2.com"
  * - B2_ACCESS_KEY_ID: Backblaze Application Key ID (KeyID)
  * - B2_SECRET_ACCESS_KEY: Backblaze Application Key (Secret)
- * - B2_BUCKET_NAME: Target Backblaze B2 private bucket name
- * - HF_API_KEY: (Optional) Server-level Hugging Face user access token
- *
- * Actions:
- * 1. GET /?action=upload&filename=...&contentType=...
- *    -> Returns: { "uploadUrl": "...", "temporaryDownloadUrl": "...", "key": "...", "expiresInSeconds": 86400 }
- *
- * 2. GET /?action=download&key=... (or filename=...)
- *    -> Returns: { "temporaryDownloadUrl": "...", "key": "...", "expiresInSeconds": 86400 }
- *
- * 3. GET/POST /?action=ai_generate (or action=generate_image)
- *    -> Runs lowest-token Hugging Face diffusion inference (1-4 steps), pipes image directly
- *       into private Backblaze B2, and returns 24h pre-signed URL + base64 preview.
- *
- * 4. GET /?action=health
- *    -> Returns: { "status": "ok", "aiSupported": true, "lowestTokenModel": "stabilityai/sdxl-turbo" }
+ * - B2_BUCKET_NAME: Target Backblaze B2 bucket name
+ * - HF_API_KEY: (Optional) Server-level Hugging Face access token
  */
 
 import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
@@ -33,13 +28,13 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, HEAD, POST, PUT, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, x-amz-date, x-amz-content-sha256",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, x-amz-date, x-amz-content-sha256, x-amz-security-token",
   "Access-Control-Max-Age": "86400",
 };
 
 export default {
   async fetch(request, env) {
-    // 1. Handle CORS pre-flight OPTIONS request
+    // 1. Handle CORS pre-flight
     if (request.method === "OPTIONS") {
       return new Response(null, {
         status: 204,
@@ -47,44 +42,41 @@ export default {
       });
     }
 
-    // 2. Allow GET and POST requests
-    if (request.method !== "GET" && request.method !== "POST") {
-      return new Response(JSON.stringify({ error: "Method not allowed. Use GET or POST." }), {
-        status: 405,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     try {
       const url = new URL(request.url);
       let action = (url.searchParams.get("action") || "").toLowerCase();
 
-      // Parse JSON body for POST requests if provided
+      // Read raw body if POST
       let postBody = {};
+      let rawRequestBody = null;
       if (request.method === "POST") {
-        try {
-          const text = await request.text();
-          if (text) {
-            postBody = JSON.parse(text);
-            if (!action && postBody.action) {
-              action = postBody.action.toLowerCase();
+        const contentType = request.headers.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+          try {
+            const text = await request.text();
+            if (text) {
+              postBody = JSON.parse(text);
+              if (!action && postBody.action) action = postBody.action.toLowerCase();
             }
-          }
-        } catch (_) {}
+          } catch (_) {}
+        } else if (action === "upload_direct" || action === "upload_file") {
+          rawRequestBody = await request.arrayBuffer();
+        }
       }
 
-      // Default action to upload if unspecified
       if (!action) action = "upload";
 
-      // Health check endpoint
+      // Health Check
       if (action === "health" || action === "status") {
         return new Response(
           JSON.stringify({
             status: "ok",
-            service: "b2-presigned-worker",
+            service: "b2-chat-gatekeeper",
+            b2Configured: !!(env.B2_ACCESS_KEY_ID && env.B2_SECRET_ACCESS_KEY && env.B2_BUCKET_NAME),
+            b2Bucket: env.B2_BUCKET_NAME || "not_configured",
+            b2Endpoint: env.B2_ENDPOINT || "s3.us-west-004.backblazeb2.com",
             aiSupported: true,
-            defaultLowestTokenModel: "stabilityai/sdxl-turbo",
-            recommendedLowTokenSteps: 1,
+            defaultAiModel: "black-forest-labs/FLUX.1-schnell",
             timestamp: new Date().toISOString(),
           }),
           {
@@ -95,15 +87,16 @@ export default {
       }
 
       // Read environment variables
-      const b2Endpoint = env.B2_ENDPOINT || "s3.us-west-004.backblazeb2.com";
-      const b2AccessKeyId = env.B2_ACCESS_KEY_ID;
-      const b2SecretAccessKey = env.B2_SECRET_ACCESS_KEY;
-      const b2BucketName = env.B2_BUCKET_NAME;
+      const rawEndpoint = (env.B2_ENDPOINT || "s3.us-west-004.backblazeb2.com").trim().replace(/^https?:\/\//, "");
+      const b2AccessKeyId = (env.B2_ACCESS_KEY_ID || "").trim();
+      const b2SecretAccessKey = (env.B2_SECRET_ACCESS_KEY || "").trim();
+      const b2BucketName = (env.B2_BUCKET_NAME || "").trim();
 
       if (!b2AccessKeyId || !b2SecretAccessKey || !b2BucketName) {
         return new Response(
           JSON.stringify({
-            error: "Server configuration error: Missing B2 credentials in environment variables.",
+            error: "Missing Backblaze B2 credentials.",
+            troubleshooting: "Set B2_ACCESS_KEY_ID, B2_SECRET_ACCESS_KEY, and B2_BUCKET_NAME in Cloudflare Worker environment variables.",
           }),
           {
             status: 500,
@@ -112,24 +105,28 @@ export default {
         );
       }
 
-      // Initialize AWS S3 client targeting Backblaze B2 S3-compatible API
+      // Region extraction: "s3.us-west-004.backblazeb2.com" -> "us-west-004"
+      const regionMatch = rawEndpoint.match(/s3\.([a-z0-9-]+)\.backblaze/i);
+      const b2Region = regionMatch ? regionMatch[1] : (rawEndpoint.split(".")[1] || "us-west-004");
+
+      // Initialize AWS S3 Client targeting Backblaze B2 S3 API
       const s3Client = new S3Client({
-        endpoint: `https://${b2Endpoint}`,
-        region: b2Endpoint.split(".")[1] || "us-west-004",
+        endpoint: `https://${rawEndpoint}`,
+        region: b2Region,
         credentials: {
           accessKeyId: b2AccessKeyId,
           secretAccessKey: b2SecretAccessKey,
         },
+        forcePathStyle: true, // Crucial for Backblaze B2 S3 compatibility
       });
 
       // ============================================================
-      // ACTION: AI_GENERATE (Lowest-Token Server Endpoint Setup)
+      // ACTION: UPLOAD_DIRECT (Server-side signed PUT bypasses mobile client SigV4)
       // ============================================================
-      if (action === "ai_generate" || action === "generate_image") {
-        const rawPrompt = postBody.prompt || url.searchParams.get("prompt") || "";
-        if (!rawPrompt.trim()) {
+      if (action === "upload_direct" || action === "upload_file") {
+        if (!rawRequestBody || rawRequestBody.byteLength === 0) {
           return new Response(
-            JSON.stringify({ error: "Missing required 'prompt' parameter." }),
+            JSON.stringify({ error: "Missing binary payload for direct upload." }),
             {
               status: 400,
               headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -137,84 +134,22 @@ export default {
           );
         }
 
-        // Clean & optimize prompt to stay strictly within CLIP token boundaries (lowest token usage)
-        const optimizedPrompt = rawPrompt
-          .replace(/(?i)\b(8k resolution|ultra realistic|hyper realistic|trending on artstation|masterpiece)\b/g, "")
-          .replace(/\s+/g, " ")
-          .trim()
-          .slice(0, 350);
+        const rawFilename = url.searchParams.get("filename") || `file_${Date.now()}.png`;
+        const incomingContentType = request.headers.get("x-file-type") || url.searchParams.get("contentType") || "image/png";
+        const sanitizedFilename = rawFilename.replace(/[^a-zA-Z0-9._-]/g, "_").substring(0, 100);
+        const objectKey = `chat-attachments/${Date.now()}_${sanitizedFilename}`;
 
-        // Model selection with ultra-low token default
-        const requestedModel = postBody.model || url.searchParams.get("model") || "stabilityai/sdxl-turbo";
-        const isTurbo = requestedModel.toLowerCase().includes("turbo");
-        const isSchnell = requestedModel.toLowerCase().includes("schnell");
-
-        // Lowest compute token steps: 1 step for turbo, 4 steps for schnell
-        const steps = Number(postBody.steps || url.searchParams.get("steps")) || (isTurbo ? 1 : isSchnell ? 4 : 4);
-        const guidance = isTurbo ? 0.0 : 7.5;
-
-        const effectiveHfKey = (postBody.apiKey || url.searchParams.get("apiKey") || env.HF_API_KEY || "").trim();
-        const hfHeaders = {
-          "Content-Type": "application/json",
-          "Accept": "image/png, image/jpeg",
-        };
-        if (effectiveHfKey && effectiveHfKey !== "hf_placeholder_key") {
-          hfHeaders["Authorization"] = `Bearer ${effectiveHfKey}`;
-        }
-
-        // Call Hugging Face Serverless Inference API with lowest token parameters
-        const hfEndpoint = `https://api-inference.huggingface.co/models/${requestedModel}`;
-        const hfPayload = {
-          inputs: optimizedPrompt,
-          parameters: {
-            num_inference_steps: steps,
-            guidance_scale: guidance,
-          },
-          options: {
-            wait_for_model: true,
-            use_cache: true,
-          },
-        };
-
-        const hfResponse = await fetch(hfEndpoint, {
-          method: "POST",
-          headers: hfHeaders,
-          body: JSON.stringify(hfPayload),
+        // Perform signed S3 PUT directly from worker
+        const putCmd = new PutObjectCommand({
+          Bucket: b2BucketName,
+          Key: objectKey,
+          Body: new Uint8Array(rawRequestBody),
+          ContentType: incomingContentType,
         });
 
-        if (!hfResponse.ok) {
-          const errText = await hfResponse.text();
-          return new Response(
-            JSON.stringify({
-              error: `Hugging Face inference error (HTTP ${hfResponse.status})`,
-              details: errText,
-            }),
-            {
-              status: hfResponse.status,
-              headers: { ...corsHeaders, "Content-Type": "application/json" },
-            }
-          );
-        }
+        await s3Client.send(putCmd);
 
-        // Read binary image buffer
-        const imageArrayBuffer = await hfResponse.arrayBuffer();
-        const imageBytes = new Uint8Array(imageArrayBuffer);
-
-        // Upload generated image directly to Backblaze B2 private bucket
-        const timestamp = Date.now();
-        const safeSlug = optimizedPrompt.slice(0, 20).replace(/[^a-zA-Z0-9]/g, "_");
-        const objectKey = `chat-attachments/ai_${timestamp}_${safeSlug}.png`;
-
-        await s3Client.send(
-          new PutObjectCommand({
-            Bucket: b2BucketName,
-            Key: objectKey,
-            Body: imageBytes,
-            ContentType: "image/png",
-          })
-        );
-
-        // Generate 24-hour pre-signed GET download URL
+        // Generate 24h pre-signed GET URL for client retrieval
         const temporaryDownloadUrl = await getSignedUrl(
           s3Client,
           new GetObjectCommand({
@@ -224,32 +159,16 @@ export default {
           { expiresIn: 86400 }
         );
 
-        // Base64 encode for fast client rendering
-        let binaryStr = "";
-        const len = imageBytes.byteLength;
-        for (let i = 0; i < len; i++) {
-          binaryStr += String.fromCharCode(imageBytes[i]);
-        }
-        const base64Data = btoa(binaryStr);
-
         return new Response(
           JSON.stringify({
             status: "success",
-            temporaryDownloadUrl,
             key: objectKey,
-            base64Image: `data:image/png;base64,${base64Data}`,
-            model: requestedModel,
-            inferenceSteps: steps,
-            tokensUsed: steps,
+            temporaryDownloadUrl,
             expiresInSeconds: 86400,
           }),
           {
             status: 200,
-            headers: {
-              ...corsHeaders,
-              "Content-Type": "application/json",
-              "Cache-Control": "no-store, no-cache, must-revalidate",
-            },
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
           }
         );
       }
@@ -258,13 +177,10 @@ export default {
       // ACTION: DOWNLOAD (Fresh 24-hour Pre-Signed GET URL)
       // ============================================================
       if (action === "download") {
-        const rawKey = postBody.key || url.searchParams.get("key");
-        const rawFilename = postBody.filename || url.searchParams.get("filename");
-        const targetKey = rawKey || rawFilename;
-
-        if (!targetKey) {
+        const rawKey = postBody.key || url.searchParams.get("key") || postBody.filename || url.searchParams.get("filename");
+        if (!rawKey) {
           return new Response(
-            JSON.stringify({ error: "Missing required 'key' or 'filename' parameter for action=download." }),
+            JSON.stringify({ error: "Missing required 'key' parameter for action=download." }),
             {
               status: 400,
               headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -274,37 +190,30 @@ export default {
 
         const getCommand = new GetObjectCommand({
           Bucket: b2BucketName,
-          Key: targetKey,
+          Key: rawKey,
         });
 
-        // 24 hours = 86400 seconds
-        const temporaryDownloadUrl = await getSignedUrl(s3Client, getCommand, {
-          expiresIn: 86400,
-        });
+        const temporaryDownloadUrl = await getSignedUrl(s3Client, getCommand, { expiresIn: 86400 });
 
         return new Response(
           JSON.stringify({
             temporaryDownloadUrl,
-            key: targetKey,
+            key: rawKey,
             expiresInSeconds: 86400,
           }),
           {
             status: 200,
-            headers: {
-              ...corsHeaders,
-              "Content-Type": "application/json",
-              "Cache-Control": "no-store, no-cache, must-revalidate",
-            },
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
           }
         );
       }
 
       // ============================================================
-      // ACTION: UPLOAD (5-min PUT URL + 24-hour GET URL for Private Bucket)
+      // ACTION: UPLOAD (Generate Pre-Signed PUT URL + 24-hr GET URL)
       // ============================================================
       const rawKey = postBody.key || url.searchParams.get("key");
-      const rawFilename = postBody.filename || url.searchParams.get("filename") || "unnamed_attachment";
-      const contentType = postBody.contentType || url.searchParams.get("contentType") || "application/octet-stream";
+      const rawFilename = postBody.filename || url.searchParams.get("filename") || "attachment";
+      const contentType = postBody.contentType || url.searchParams.get("contentType") || "image/png";
 
       const sanitizedFilename = rawFilename
         .replace(/[^a-zA-Z0-9._-]/g, "_")
@@ -312,18 +221,21 @@ export default {
 
       const objectKey = rawKey || `chat-attachments/${Date.now()}_${sanitizedFilename}`;
 
-      // 1. Generate 5-minute (300s) pre-signed PUT upload URL
+      // 1. Generate 5-minute pre-signed PUT URL
+      // NOTE: Do NOT add ACL headers here. Standard B2 private buckets reject x-amz-acl with HTTP 403.
       const putCommand = new PutObjectCommand({
         Bucket: b2BucketName,
         Key: objectKey,
         ContentType: contentType,
       });
 
+      // Sign URL with un-signed payload for streaming flexibility
       const uploadUrl = await getSignedUrl(s3Client, putCommand, {
         expiresIn: 300,
+        signableHeaders: new Set(["host", "content-type"]),
       });
 
-      // 2. Generate 24-hour (86400s) pre-signed GET download URL for private bucket
+      // 2. Generate 24-hour pre-signed GET URL for downloading
       const getCommand = new GetObjectCommand({
         Bucket: b2BucketName,
         Key: objectKey,
@@ -352,8 +264,9 @@ export default {
     } catch (err) {
       return new Response(
         JSON.stringify({
-          error: "Server processing error",
+          error: "Cloudflare Worker B2 Error",
           message: err.message,
+          tips: "Ensure Application Key in Backblaze B2 Console has 'writeFiles' capability and correct bucket permissions.",
         }),
         {
           status: 500,

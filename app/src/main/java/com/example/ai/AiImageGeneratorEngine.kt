@@ -17,11 +17,33 @@ enum class ImageAspectRatio(val label: String, val ratioWidth: Float, val ratioH
 
 /**
  * Unified AI Image Generation service engine powered directly by Hugging Face Inference Router
- * with lowest token consumption and zero serverless proxy requests.
+ * with dynamic failover, lowest token consumption, and zero serverless proxy requests.
  */
 object AiImageGeneratorEngine {
 
     const val MODEL_NAME = "Hugging Face Inference Router"
+
+    /**
+     * Generates an image with dynamic auto-failover, returning ImageGenerationResult
+     * so UI chips can shift visual states automatically.
+     */
+    suspend fun generateImageWithFailover(
+        prompt: String,
+        aspectRatio: ImageAspectRatio = ImageAspectRatio.SQUARE_1_1,
+        model: HuggingFaceModel = HuggingFaceModel.FLUX_1_SCHNELL,
+        customModelId: String = "",
+        apiKey: String = "",
+        lowTokenMode: Boolean = true
+    ): Result<ImageGenerationResult> {
+        return HuggingFaceImageEngine.generateImageWithFailover(
+            prompt = prompt,
+            preferredModel = model,
+            customModelId = customModelId,
+            aspectRatio = aspectRatio,
+            apiKey = apiKey,
+            lowTokenMode = lowTokenMode
+        )
+    }
 
     /**
      * Generates an image from a natural language text prompt via direct Hugging Face Inference Router.
@@ -29,7 +51,7 @@ object AiImageGeneratorEngine {
     suspend fun generateImage(
         prompt: String,
         aspectRatio: ImageAspectRatio = ImageAspectRatio.SQUARE_1_1,
-        model: HuggingFaceModel = HuggingFaceModel.SDXL_TURBO,
+        model: HuggingFaceModel = HuggingFaceModel.FLUX_1_SCHNELL,
         customModelId: String = "",
         apiKey: String = "",
         lowTokenMode: Boolean = true
@@ -50,7 +72,7 @@ object AiImageGeneratorEngine {
     suspend fun editImage(
         inputBitmap: Bitmap,
         editInstruction: String,
-        model: HuggingFaceModel = HuggingFaceModel.SDXL_TURBO,
+        model: HuggingFaceModel = HuggingFaceModel.FLUX_1_SCHNELL,
         customModelId: String = "",
         apiKey: String = "",
         lowTokenMode: Boolean = true
