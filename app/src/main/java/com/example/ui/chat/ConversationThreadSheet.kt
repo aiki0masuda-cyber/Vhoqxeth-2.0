@@ -96,6 +96,7 @@ import com.example.data.CatboxUploadManager
 import com.example.data.MeshChatRepository
 import com.example.data.SessionManager
 import com.example.model.ChatMessage
+import com.example.util.FileAttachmentActionManager
 import com.example.model.ConversationThread
 import com.example.model.UserProfile
 import com.example.ui.theme.DavAccentSky
@@ -993,8 +994,11 @@ private fun MessageBubble(
     val textColor = if (isMe) Color.White else DavTextPrimary
     val alignment = if (isMe) Alignment.End else Alignment.Start
 
-    // Direct CDN URL from Catbox or local fallback
-    val activeMediaUrl = message.resolvedAttachmentUrl?.ifBlank { null } ?: message.attachmentUri ?: ""
+    val coroutineScope = rememberCoroutineScope()
+
+    // Direct CDN URL from Catbox or local fallback (with ISP bypass mirror)
+    val rawMediaUrl = message.resolvedAttachmentUrl?.ifBlank { null } ?: message.attachmentUri ?: ""
+    val activeMediaUrl: String = CatboxUploadManager.applyBypassMirror(rawMediaUrl)
 
     val timeString = try {
         val format = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
@@ -1078,15 +1082,12 @@ private fun MessageBubble(
                                     RoundedCornerShape(10.dp)
                                 )
                                 .clickable {
-                                    try {
-                                        val intent = Intent(Intent.ACTION_VIEW).apply {
-                                            setDataAndType(Uri.parse(effectiveMediaUri), "image/*")
-                                            flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
-                                        }
-                                        context.startActivity(Intent.createChooser(intent, "View Image"))
-                                    } catch (e: Exception) {
-                                        Toast.makeText(context, "Cannot open image: ${e.message}", Toast.LENGTH_SHORT).show()
-                                    }
+                                    FileAttachmentActionManager.openAttachment(
+                                        context = context,
+                                        urlOrUri = effectiveMediaUri,
+                                        fileName = attName,
+                                        fallbackType = "IMAGE"
+                                    )
                                 }
                         ) {
                             AsyncImage(
@@ -1095,6 +1096,33 @@ private fun MessageBubble(
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize()
                             )
+
+                            // Action Type 2: Direct download button for images
+                            IconButton(
+                                onClick = {
+                                    coroutineScope.launch {
+                                        FileAttachmentActionManager.downloadToDownloadsFolder(
+                                            context = context,
+                                            urlOrUri = effectiveMediaUri,
+                                            suggestedFileName = attName,
+                                            fallbackType = "IMAGE"
+                                        )
+                                    }
+                                },
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(6.dp)
+                                    .size(34.dp)
+                                    .background(Color.Black.copy(alpha = 0.55f), CircleShape)
+                                    .testTag("download_image_attachment_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.FileDownload,
+                                    contentDescription = "Save image to Downloads",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                         }
                     }
 
@@ -1110,21 +1138,12 @@ private fun MessageBubble(
                             )
                             .clickable {
                                 if (effectiveMediaUri.isNotBlank()) {
-                                    try {
-                                        val intent = Intent(Intent.ACTION_VIEW).apply {
-                                            val mime = when (attType) {
-                                                "VIDEO" -> "video/*"
-                                                "PDF" -> "application/pdf"
-                                                "IMAGE" -> "image/*"
-                                                else -> "*/*"
-                                            }
-                                            setDataAndType(Uri.parse(effectiveMediaUri), mime)
-                                            flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
-                                        }
-                                        context.startActivity(Intent.createChooser(intent, "Open $attName"))
-                                    } catch (e: Exception) {
-                                        Toast.makeText(context, "Cannot open file: ${e.message}", Toast.LENGTH_SHORT).show()
-                                    }
+                                    FileAttachmentActionManager.openAttachment(
+                                        context = context,
+                                        urlOrUri = effectiveMediaUri,
+                                        fileName = attName,
+                                        fallbackType = attType
+                                    )
                                 }
                             }
                             .padding(10.dp)
@@ -1160,12 +1179,50 @@ private fun MessageBubble(
                                     fontSize = 11.sp
                                 )
                             }
-                            Icon(
-                                imageVector = Icons.Default.OpenInNew,
-                                contentDescription = "Open file",
-                                tint = if (isMe) Color.White else DavBrandRoyalBlue,
-                                modifier = Modifier.size(18.dp)
-                            )
+                            // Action Type 2: Physical System Folder Download
+                            IconButton(
+                                onClick = {
+                                    coroutineScope.launch {
+                                        FileAttachmentActionManager.downloadToDownloadsFolder(
+                                            context = context,
+                                            urlOrUri = effectiveMediaUri,
+                                            suggestedFileName = attName,
+                                            fallbackType = attType
+                                        )
+                                    }
+                                },
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .testTag("download_file_attachment_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.FileDownload,
+                                    contentDescription = "Save file to Downloads",
+                                    tint = if (isMe) Color.White else DavBrandRoyalBlue,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            // Action Type 1: Direct File Viewing / Web Browser Opening
+                            IconButton(
+                                onClick = {
+                                    FileAttachmentActionManager.openAttachment(
+                                        context = context,
+                                        urlOrUri = effectiveMediaUri,
+                                        fileName = attName,
+                                        fallbackType = attType
+                                    )
+                                },
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .testTag("open_file_attachment_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.OpenInNew,
+                                    contentDescription = "Open file",
+                                    tint = if (isMe) Color.White else DavBrandRoyalBlue,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
                     }
                 }

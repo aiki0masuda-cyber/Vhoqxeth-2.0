@@ -43,8 +43,20 @@ class CatboxUploadManager(
         const val CATBOX_API_ENDPOINT = "https://catbox.moe/user/api.php"
         const val MAX_SIZE_BYTES = 200 * 1024 * 1024L // 200MB
         const val SIZE_LIMIT_ALERT = "Upload failed. Please ensure the file size is under 200MB."
+        const val ORIGINAL_MIRROR = "https://files.catbox.moe/"
+        const val BYPASS_MIRROR = "https://de.catbox.moe/"
 
         fun getUniversalUserhash(): String = CATBOX_UNIVERSAL_USERHASH
+
+        /**
+         * Replaces standard filtered "files.catbox.moe" domain with the alternate bypass mirror "de.catbox.moe"
+         * to circumvent ISP filtering while maintaining seamless download/preview capabilities.
+         */
+        fun applyBypassMirror(url: String): String {
+            if (url.isBlank()) return url
+            return url.replace("https://files.catbox.moe/", "https://de.catbox.moe/")
+                .replace("http://files.catbox.moe/", "https://de.catbox.moe/")
+        }
 
         fun defaultOkHttpClient(): OkHttpClient {
             return OkHttpClient.Builder()
@@ -139,9 +151,10 @@ class CatboxUploadManager(
                 val responseBody = response.body?.string().orEmpty().trim()
 
                 if (response.isSuccessful && responseBody.startsWith("http", ignoreCase = true)) {
-                    Log.i(TAG, "Catbox upload succeeded: $responseBody")
+                    val bypassUrl = applyBypassMirror(responseBody)
+                    Log.i(TAG, "Catbox upload succeeded: raw=$responseBody -> bypass=$bypassUrl")
                     onProgress?.invoke(1f)
-                    return@withContext CatboxUploadResult(url = responseBody, isLocalFallback = false)
+                    return@withContext CatboxUploadResult(url = bypassUrl, isLocalFallback = false)
                 }
 
                 // Catbox error, 502 Bad Gateway, or unexpected response

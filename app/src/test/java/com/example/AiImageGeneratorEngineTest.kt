@@ -96,10 +96,24 @@ class AiImageGeneratorEngineTest {
             bitmap = testBitmap,
             usedModel = SiliconFlowModel.FLUX_1_SCHNELL,
             wasFailover = true,
-            imageUrl = "https://files.catbox.moe/abc123.png"
+            imageUrl = "https://de.catbox.moe/abc123.png"
         )
         assertTrue(result.wasFailover)
         assertEquals(SiliconFlowModel.FLUX_1_SCHNELL, result.usedModel)
-        assertEquals("https://files.catbox.moe/abc123.png", result.imageUrl)
+        assertEquals("https://de.catbox.moe/abc123.png", result.imageUrl)
+    }
+
+    @Test
+    fun testFileAttachmentActionManagerMimeTypes() {
+        assertEquals("image/png", com.example.util.FileAttachmentActionManager.getMimeType("image.png"))
+        assertEquals("image/jpeg", com.example.util.FileAttachmentActionManager.getMimeType("photo.jpg"))
+        assertEquals("image/jpeg", com.example.util.FileAttachmentActionManager.getMimeType("photo.jpeg"))
+        assertEquals("image/gif", com.example.util.FileAttachmentActionManager.getMimeType("anim.gif"))
+        assertEquals("image/webp", com.example.util.FileAttachmentActionManager.getMimeType("card.webp"))
+        assertEquals("application/pdf", com.example.util.FileAttachmentActionManager.getMimeType("document.pdf"))
+        assertEquals("video/mp4", com.example.util.FileAttachmentActionManager.getMimeType("lecture.mp4"))
+        assertEquals("text/plain", com.example.util.FileAttachmentActionManager.getMimeType("notes.txt"))
+        assertEquals("application/zip", com.example.util.FileAttachmentActionManager.getMimeType("archive.zip"))
+        assertEquals("image/jpeg", com.example.util.FileAttachmentActionManager.getMimeType("unknown_file", "IMAGE"))
     }
 }
