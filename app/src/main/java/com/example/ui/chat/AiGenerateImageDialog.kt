@@ -24,12 +24,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -45,8 +42,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -63,12 +58,13 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ai.AiImageGeneratorEngine
-import com.example.ai.HuggingFaceImageEngine
-import com.example.ai.HuggingFaceModel
 import com.example.ai.ImageAspectRatio
+import com.example.ai.SiliconFlowImageEngine
+import com.example.ai.SiliconFlowModel
 import com.example.data.SessionManager
 import com.example.ui.theme.DavAccentSky
 import com.example.ui.theme.DavBorder
@@ -96,34 +92,19 @@ fun AiGenerateImageDialog(
     var prompt by remember { mutableStateOf(initialPrompt) }
     var selectedAspectRatio by remember { mutableStateOf(ImageAspectRatio.SQUARE_1_1) }
     var selectedModel by remember {
-        mutableStateOf(HuggingFaceModel.fromId(sessionManager.getHuggingFaceModel()))
+        mutableStateOf(SiliconFlowModel.fromId(sessionManager.getSiliconFlowModel()))
     }
-    var customModelId by remember { mutableStateOf(sessionManager.getHuggingFaceCustomModel()) }
-    var useCustomModel by remember { mutableStateOf(customModelId.isNotBlank()) }
 
-    var customApiKey by remember { mutableStateOf(sessionManager.getHuggingFaceApiKey()) }
-    var lowTokenMode by remember { mutableStateOf(sessionManager.isLowTokenModeEnabled()) }
+    var customApiKey by remember { mutableStateOf(sessionManager.getSiliconFlowApiKey()) }
     var showSettings by remember { mutableStateOf(false) }
-
-    var isVerifyingToken by remember { mutableStateOf(false) }
-    var tokenVerificationMessage by remember { mutableStateOf<String?>(null) }
-    var isTokenValid by remember { mutableStateOf<Boolean?>(null) }
 
     var isGenerating by remember { mutableStateOf(false) }
     var generatedBitmap by remember { mutableStateOf<Bitmap?>(initialInputBitmap) }
-    var editInstruction by remember { mutableStateOf("") }
-    var isEditingMode by remember { mutableStateOf(initialInputBitmap != null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    val secretsPanelKey = remember { HuggingFaceImageEngine.resolveConfiguredApiKey() }
+    val secretsPanelKey = remember { SiliconFlowImageEngine.resolveConfiguredApiKey() }
     val effectiveToken = customApiKey.trim().ifBlank { secretsPanelKey }
     val isKeyActive = effectiveToken.isNotBlank()
-
-    val activeModelDisplayName = if (useCustomModel && customModelId.isNotBlank()) {
-        customModelId.trim()
-    } else {
-        selectedModel.displayName
-    }
 
     val quickChips = listOf(
         "🧬 Biology: Plant Cell Organelles" to "Cross-section of a plant cell with labeled chloroplasts, cell wall, and nucleus",
@@ -135,31 +116,6 @@ fun AiGenerateImageDialog(
         "🛡️ School Crest: DAV Knowledge Crest" to "Prestigious Vedic and scholastic emblem crest with flaming torch of knowledge"
     )
 
-    fun testTokenValidity() {
-        val tokenToTest = customApiKey.ifBlank { secretsPanelKey }
-        if (tokenToTest.isBlank()) {
-            tokenVerificationMessage = "Please enter a token first."
-            isTokenValid = false
-            return
-        }
-        isVerifyingToken = true
-        tokenVerificationMessage = null
-        isTokenValid = null
-        coroutineScope.launch {
-            val result = HuggingFaceImageEngine.validateToken(tokenToTest)
-            isVerifyingToken = false
-            if (result.isSuccess) {
-                val userName = result.getOrNull() ?: "Authenticated"
-                tokenVerificationMessage = "Verified as @$userName (Inference Ready)"
-                isTokenValid = true
-            } else {
-                val err = result.exceptionOrNull()?.localizedMessage ?: "Invalid token"
-                tokenVerificationMessage = err
-                isTokenValid = false
-            }
-        }
-    }
-
     fun startGeneration() {
         if (prompt.trim().isBlank()) return
         isGenerating = true
@@ -169,52 +125,19 @@ fun AiGenerateImageDialog(
                 prompt = prompt.trim(),
                 aspectRatio = selectedAspectRatio,
                 model = selectedModel,
-                customModelId = if (useCustomModel) customModelId.trim() else "",
-                apiKey = customApiKey.trim(),
-                lowTokenMode = lowTokenMode
+                apiKey = customApiKey.trim()
             )
             isGenerating = false
             if (result.isSuccess) {
                 val output = result.getOrThrow()
                 generatedBitmap = output.bitmap
-                isEditingMode = false
-                // Automatically and silently shift active model chip if failover occurred
                 if (output.wasFailover) {
                     selectedModel = output.usedModel
-                    useCustomModel = false
-                    sessionManager.setHuggingFaceModel(output.usedModel.id)
+                    sessionManager.setSiliconFlowModel(output.usedModel.id)
                 }
             } else {
                 val ex = result.exceptionOrNull()
-                val rawMsg = ex?.localizedMessage ?: ex?.message ?: "Failed to generate image."
-                errorMessage = rawMsg
-            }
-        }
-    }
-
-    fun startRefinement() {
-        val currentBmp = generatedBitmap ?: return
-        if (editInstruction.trim().isBlank()) return
-        isGenerating = true
-        errorMessage = null
-        coroutineScope.launch {
-            val result = AiImageGeneratorEngine.editImage(
-                inputBitmap = currentBmp,
-                editInstruction = editInstruction.trim(),
-                model = selectedModel,
-                customModelId = if (useCustomModel) customModelId.trim() else "",
-                apiKey = customApiKey.trim(),
-                lowTokenMode = lowTokenMode
-            )
-            isGenerating = false
-            if (result.isSuccess) {
-                generatedBitmap = result.getOrNull()
-                prompt = "${prompt.ifBlank { "Illustration" }} (${editInstruction.trim()})"
-                editInstruction = ""
-                isEditingMode = false
-            } else {
-                val ex = result.exceptionOrNull()
-                errorMessage = ex?.localizedMessage ?: ex?.message ?: "Failed to refine image."
+                errorMessage = ex?.localizedMessage ?: "Failed to generate image."
             }
         }
     }
@@ -253,7 +176,7 @@ fun AiGenerateImageDialog(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Inference Router ($activeModelDisplayName)",
+                        text = "SiliconFlow AI (${selectedModel.displayName})",
                         color = DavTextSecondary,
                         fontSize = 11.sp
                     )
@@ -264,7 +187,7 @@ fun AiGenerateImageDialog(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Settings,
-                        contentDescription = "Inference Router Settings",
+                        contentDescription = "Settings",
                         tint = if (showSettings) DavBrandRoyalBlue else DavTextMuted,
                         modifier = Modifier.size(18.dp)
                     )
@@ -309,9 +232,9 @@ fun AiGenerateImageDialog(
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = when {
-                            customApiKey.isNotBlank() -> "Using In-App Token (router.huggingface.co)"
-                            secretsPanelKey.isNotBlank() -> "Using Secrets Panel Token (router.huggingface.co)"
-                            else -> "No Token Configured: Add HUGGINGFACE_API_KEY in Secrets or settings"
+                            customApiKey.isNotBlank() -> "Using In-App SiliconFlow Token"
+                            secretsPanelKey.isNotBlank() -> "Using Secrets Panel Token"
+                            else -> "Enter your SiliconFlow API key (sk-...) in settings"
                         },
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Medium,
@@ -330,50 +253,6 @@ fun AiGenerateImageDialog(
                             .border(1.dp, DavBorder, RoundedCornerShape(12.dp))
                             .padding(12.dp)
                     ) {
-                        // Lowest Token Mode Toggle
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                Icon(
-                                    imageVector = Icons.Default.Bolt,
-                                    contentDescription = null,
-                                    tint = Color(0xFFD97706),
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Column {
-                                    Text(
-                                        text = "Lowest Token Usage Mode",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = DavTextPrimary
-                                    )
-                                    Text(
-                                        text = "Truncates prompt tokens & uses 1-4 step fast distillation",
-                                        fontSize = 10.sp,
-                                        color = DavTextMuted
-                                    )
-                                }
-                            }
-                            Switch(
-                                checked = lowTokenMode,
-                                onCheckedChange = {
-                                    lowTokenMode = it
-                                    sessionManager.setLowTokenModeEnabled(it)
-                                },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = Color.White,
-                                    checkedTrackColor = Color(0xFF15803D)
-                                )
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        // Personal API Token Override Section
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
                                 imageVector = Icons.Default.Key,
@@ -383,7 +262,7 @@ fun AiGenerateImageDialog(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "Hugging Face User Token",
+                                text = "SiliconFlow API Key",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = DavTextPrimary
@@ -391,7 +270,7 @@ fun AiGenerateImageDialog(
                         }
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Paste your free token from huggingface.co/settings/tokens (Bearer prefix will be cleaned automatically).",
+                            text = "Enter your SiliconFlow API key (starts with sk-). Saved securely on your device.",
                             fontSize = 10.sp,
                             color = DavTextSecondary
                         )
@@ -399,80 +278,12 @@ fun AiGenerateImageDialog(
                         OutlinedTextField(
                             value = customApiKey,
                             onValueChange = {
-                                val sanitized = HuggingFaceImageEngine.sanitizeApiKey(it)
+                                val sanitized = SiliconFlowImageEngine.sanitizeApiKey(it)
                                 customApiKey = sanitized
-                                sessionManager.setHuggingFaceApiKey(sanitized)
-                                tokenVerificationMessage = null
-                                isTokenValid = null
+                                sessionManager.setSiliconFlowApiKey(sanitized)
                             },
-                            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                            placeholder = { Text(if (secretsPanelKey.isNotBlank()) "●●●●●●●● (Loaded from Secrets Panel)" else "hf_xxxxxxxxxxxxxxxxxxxx", fontSize = 11.sp, color = DavTextMuted) },
-                            singleLine = true,
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = Color.White,
-                                unfocusedContainerColor = Color.White
-                            )
-                        )
-
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            OutlinedButton(
-                                onClick = { testTokenValidity() },
-                                enabled = !isVerifyingToken && (customApiKey.isNotBlank() || secretsPanelKey.isNotBlank()),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.height(32.dp)
-                            ) {
-                                if (isVerifyingToken) {
-                                    CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 2.dp)
-                                } else {
-                                    Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(12.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Verify Token", fontSize = 11.sp)
-                                }
-                            }
-                            Spacer(modifier = Modifier.width(8.dp))
-                            if (tokenVerificationMessage != null) {
-                                Text(
-                                    text = tokenVerificationMessage!!,
-                                    fontSize = 10.sp,
-                                    color = if (isTokenValid == true) Color(0xFF15803D) else Color(0xFFDC2626),
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        // Custom Model Override Section
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Extension,
-                                contentDescription = null,
-                                tint = DavBrandRoyalBlue,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Custom Model Repository (Optional)",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = DavTextPrimary
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        OutlinedTextField(
-                            value = customModelId,
-                            onValueChange = {
-                                customModelId = it
-                                sessionManager.setHuggingFaceCustomModel(it)
-                                if (it.isNotBlank()) {
-                                    useCustomModel = true
-                                }
-                            },
-                            placeholder = { Text("e.g. stabilityai/sdxl-turbo", fontSize = 11.sp, color = DavTextMuted) },
+                            visualTransformation = PasswordVisualTransformation(),
+                            placeholder = { Text(if (secretsPanelKey.isNotBlank()) "●●●●●●●● (Loaded from Secrets Panel)" else "sk-xxxxxxxxxxxxxxxxxxxx", fontSize = 11.sp, color = DavTextMuted) },
                             singleLine = true,
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.fillMaxWidth(),
@@ -485,32 +296,9 @@ fun AiGenerateImageDialog(
                 }
 
                 if (generatedBitmap == null) {
-                    // Lowest-Token Mode Active Indicator Badge
-                    if (lowTokenMode) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFFFEF3C7))
-                                .border(1.dp, Color(0xFFFDE68A), RoundedCornerShape(8.dp))
-                                .padding(horizontal = 8.dp, vertical = 5.dp)
-                        ) {
-                            Icon(imageVector = Icons.Default.Bolt, contentDescription = null, tint = Color(0xFFD97706), modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Direct Router: 1–4 step fast distillation, minimal token usage",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF92400E)
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                    }
-
                     // Model Selection Chips
                     Text(
-                        text = "AI DIFFUSION MODEL",
+                        text = "SILICONFLOW DIFFUSION MODEL",
                         color = DavBrandRoyalBlue,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
@@ -523,8 +311,8 @@ fun AiGenerateImageDialog(
                             .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        HuggingFaceModel.entries.forEach { modelOption ->
-                            val isSelected = !useCustomModel && selectedModel == modelOption
+                        SiliconFlowModel.entries.forEach { modelOption ->
+                            val isSelected = selectedModel == modelOption
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
@@ -535,15 +323,14 @@ fun AiGenerateImageDialog(
                                         RoundedCornerShape(8.dp)
                                     )
                                     .clickable(enabled = !isGenerating) {
-                                        useCustomModel = false
                                         selectedModel = modelOption
-                                        sessionManager.setHuggingFaceModel(modelOption.id)
+                                        sessionManager.setSiliconFlowModel(modelOption.id)
                                     }
                                     .padding(horizontal = 10.dp, vertical = 6.dp)
                                     .testTag("model_${modelOption.name}")
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    if (modelOption.isLowestTokenTier) {
+                                    if (modelOption.isPrimary) {
                                         Icon(
                                             imageVector = Icons.Default.Bolt,
                                             contentDescription = null,
@@ -561,38 +348,12 @@ fun AiGenerateImageDialog(
                                 }
                             }
                         }
-
-                        // Custom Model Chip
-                        val isCustomSelected = useCustomModel
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (isCustomSelected) DavBrandRoyalBlue else DavSurfaceElevated)
-                                .border(
-                                    1.dp,
-                                    if (isCustomSelected) DavBrandRoyalBlue else DavBorder,
-                                    RoundedCornerShape(8.dp)
-                                )
-                                .clickable(enabled = !isGenerating) {
-                                    useCustomModel = true
-                                    showSettings = true
-                                }
-                                .padding(horizontal = 10.dp, vertical = 6.dp)
-                                .testTag("model_custom")
-                        ) {
-                            Text(
-                                text = if (customModelId.isNotBlank()) "Custom: ${customModelId.take(14)}..." else "Custom Model...",
-                                color = if (isCustomSelected) Color.White else DavTextPrimary,
-                                fontSize = 11.sp,
-                                fontWeight = if (isCustomSelected) FontWeight.Bold else FontWeight.Medium
-                            )
-                        }
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
 
                     Text(
-                        text = "Enter a concept description or choose a scholastic inspiration chip below:",
+                        text = "Enter a concept description or choose an inspiration chip below:",
                         color = DavTextSecondary,
                         fontSize = 13.sp,
                         lineHeight = 18.sp
@@ -608,7 +369,7 @@ fun AiGenerateImageDialog(
                         },
                         placeholder = {
                             Text(
-                                text = "e.g. Educational concept illustration explaining PCM+IT...",
+                                text = "e.g. Educational diagram of human heart with labeled chambers...",
                                 color = DavTextMuted,
                                 fontSize = 13.sp
                             )
@@ -743,101 +504,6 @@ fun AiGenerateImageDialog(
                         lineHeight = 16.sp,
                         modifier = Modifier.padding(horizontal = 4.dp)
                     )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Refinement & Image Editing Accordion
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(DavSurfaceElevated)
-                            .clickable { isEditingMode = !isEditingMode }
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.AutoFixHigh,
-                                contentDescription = null,
-                                tint = DavBrandRoyalBlue,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Refine / Edit with Inference Router", color = DavBrandRoyalBlue, fontSize = 12.sp)
-                        }
-                        Text(if (isEditingMode) "Hide" else "Show", color = DavTextMuted, fontSize = 11.sp)
-                    }
-
-                    AnimatedVisibility(visible = isEditingMode) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 8.dp)
-                        ) {
-                            OutlinedTextField(
-                                value = editInstruction,
-                                onValueChange = { editInstruction = it },
-                                placeholder = {
-                                    Text(
-                                        "e.g. Add clear colored labels...",
-                                        color = DavTextMuted,
-                                        fontSize = 12.sp
-                                    )
-                                },
-                                maxLines = 2,
-                                enabled = !isGenerating,
-                                shape = RoundedCornerShape(8.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedContainerColor = DavCanvasLight,
-                                    unfocusedContainerColor = DavCanvasLight
-                                ),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .testTag("ai_image_refine_input")
-                            )
-
-                            Spacer(modifier = Modifier.height(6.dp))
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.End
-                            ) {
-                                OutlinedButton(
-                                    onClick = {
-                                        editInstruction = ""
-                                        isEditingMode = false
-                                    },
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.height(36.dp)
-                                ) {
-                                    Text("Cancel", fontSize = 11.sp)
-                                }
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Button(
-                                    onClick = { startRefinement() },
-                                    enabled = editInstruction.trim().isNotBlank() && !isGenerating,
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = DavBrandRoyalBlue,
-                                        contentColor = Color.White
-                                    ),
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier
-                                        .height(36.dp)
-                                        .testTag("submit_refinement_button")
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.AutoFixHigh,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Apply Edit", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                    }
                 }
 
                 // Loading State indicator
@@ -858,28 +524,15 @@ fun AiGenerateImageDialog(
                         )
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
-                            text = if (isEditingMode) {
-                                "Refining visual representation with direct Inference Router..."
-                            } else {
-                                "Synthesizing with $activeModelDisplayName (Inference Router)..."
-                            },
+                            text = "Synthesizing with SiliconFlow (${selectedModel.displayName})...",
                             color = DavBrandRoyalBlue,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Medium
                         )
-                        Text(
-                            text = if (selectedModel == HuggingFaceModel.SDXL_TURBO) {
-                                "⚡ Ultra-low 1-step real-time generation (typically 3–8s)"
-                            } else {
-                                "Low-token direct inference typically completes within 10–20s"
-                            },
-                            color = DavTextMuted,
-                            fontSize = 10.sp
-                        )
                     }
                 }
 
-                // Error Message Display with Clear Actionable Steps
+                // Error Notice
                 if (errorMessage != null) {
                     Spacer(modifier = Modifier.height(10.dp))
                     Column(
@@ -899,11 +552,7 @@ fun AiGenerateImageDialog(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = if (errorMessage!!.contains("Auth", ignoreCase = true) || errorMessage!!.contains("401")) {
-                                    "Hugging Face Authentication Required"
-                                } else {
-                                    "Generation Notice"
-                                },
+                                text = "Notice",
                                 color = Color(0xFF991B1B),
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold
@@ -916,18 +565,16 @@ fun AiGenerateImageDialog(
                             fontSize = 12.sp,
                             lineHeight = 16.sp
                         )
-                        if (errorMessage!!.contains("Auth", ignoreCase = true) || errorMessage!!.contains("401") || !isKeyActive) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            OutlinedButton(
-                                onClick = { showSettings = true },
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = DavBrandRoyalBlue),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.height(34.dp)
-                            ) {
-                                Icon(imageVector = Icons.Default.Key, contentDescription = null, modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Open Token Settings", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = { showSettings = true },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = DavBrandRoyalBlue),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.height(34.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.Key, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Configure API Key", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -983,7 +630,6 @@ fun AiGenerateImageDialog(
                 OutlinedButton(
                     onClick = {
                         generatedBitmap = null
-                        isEditingMode = false
                     },
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier.testTag("regenerate_ai_image_button")

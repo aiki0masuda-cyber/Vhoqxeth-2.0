@@ -90,9 +90,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.ai.AiImageGeneratorEngine
-import com.example.ai.HuggingFaceImageEngine
-import com.example.ai.HuggingFaceModel
-import com.example.data.B2UploadManager
+import com.example.ai.SiliconFlowImageEngine
+import com.example.ai.SiliconFlowModel
+import com.example.data.CatboxUploadManager
 import com.example.data.MeshChatRepository
 import com.example.data.SessionManager
 import com.example.model.ChatMessage
@@ -155,11 +155,7 @@ fun ConversationThreadSheet(
     val messages by messagesFlow.collectAsState(initial = emptyList())
 
     val sessionManager = remember { SessionManager(context) }
-    val b2UploadManager = remember {
-        B2UploadManager().apply {
-            configuredWorkerEndpoint = sessionManager.getCloudflareWorkerUrl()
-        }
-    }
+    val catboxUploadManager = remember { CatboxUploadManager() }
     val pendingUploads = remember { mutableStateListOf<ChatMessage>() }
     val uploadStates = remember { mutableStateMapOf<String, UploadState>() }
 
@@ -480,17 +476,13 @@ fun ConversationThreadSheet(
                             message = msg,
                             uploadState = uploadStates[msg.messageId],
                             onCancel = {
-                                b2UploadManager.cancelUpload(msg.messageId)
                                 pendingUploads.removeAll { it.messageId == msg.messageId }
                                 uploadStates.remove(msg.messageId)
                             },
                             onRetry = {
                                 coroutineScope.launch {
-                                    val currentWorkerUrl = sessionManager.getCloudflareWorkerUrl()
                                     val attUri = Uri.parse(msg.attachmentUri ?: "")
-                                    val retryResult = b2UploadManager.executeCompleteUploadWithKey(
-                                        uploadId = msg.messageId,
-                                        workerEndpoint = currentWorkerUrl,
+                                    val uploadRes = catboxUploadManager.uploadFile(
                                         contentResolver = context.contentResolver,
                                         fileUri = attUri,
                                         filename = msg.attachmentName ?: "attachment",
@@ -500,32 +492,28 @@ fun ConversationThreadSheet(
                                             "PDF" -> "application/pdf"
                                             else -> "application/octet-stream"
                                         },
-                                        fileSizeBytes = 0L,
-                                        onStateChanged = { st ->
-                                            uploadStates[msg.messageId] = st
-                                            if (st is UploadState.Uploading) {
-                                                val idx = pendingUploads.indexOfFirst { it.messageId == msg.messageId }
-                                                if (idx != -1) {
-                                                    pendingUploads[idx] = pendingUploads[idx].copy(uploadProgress = st.progress)
-                                                }
+                                        onProgress = { p ->
+                                            uploadStates[msg.messageId] = UploadState.Uploading(p)
+                                            val idx = pendingUploads.indexOfFirst { it.messageId == msg.messageId }
+                                            if (idx != -1) {
+                                                pendingUploads[idx] = pendingUploads[idx].copy(uploadProgress = p)
                                             }
                                         }
                                     )
-                                    val (finalUrl, finalKey) = if (retryResult.isSuccess) {
-                                        val completion = retryResult.getOrThrow()
-                                        completion.downloadUrl to completion.key
-                                    } else {
-                                        (msg.attachmentUri ?: "") to null
+                                    if (uploadRes.isLocalFallback && uploadRes.errorMessage != null) {
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(context, uploadRes.errorMessage, Toast.LENGTH_LONG).show()
+                                        }
                                     }
                                     chatRepository.sendFileMessage(
                                         threadId = currentThread.id,
                                         senderProfile = currentUser,
                                         content = msg.content,
-                                        attachmentUri = finalUrl,
+                                        attachmentUri = uploadRes.url,
                                         attachmentName = msg.attachmentName ?: "File",
                                         attachmentType = msg.attachmentType ?: "FILE",
                                         attachmentSize = msg.attachmentSize ?: "",
-                                        attachmentKey = finalKey
+                                        attachmentKey = null
                                     )
                                     pendingUploads.removeAll { it.messageId == msg.messageId }
                                     uploadStates.remove(msg.messageId)
@@ -537,8 +525,7 @@ fun ConversationThreadSheet(
                     MessageBubble(
                         message = msg,
                         isMe = isMe,
-                        context = context,
-                        b2UploadManager = b2UploadManager
+                        context = context
                     )
                 }
             }
@@ -736,10 +723,7 @@ fun ConversationThreadSheet(
                                 pendingUploads.add(placeholder)
 
                                 coroutineScope.launch {
-                                    val currentWorkerUrl = sessionManager.getCloudflareWorkerUrl()
-                                    val uploadResult = b2UploadManager.executeCompleteUploadWithKey(
-                                        uploadId = tempId,
-                                        workerEndpoint = currentWorkerUrl,
+                                    val uploadRes = catboxUploadManager.uploadFile(
                                         contentResolver = context.contentResolver,
                                         fileUri = att.uri,
                                         filename = att.name,
@@ -749,51 +733,37 @@ fun ConversationThreadSheet(
                                             "PDF" -> "application/pdf"
                                             else -> "application/octet-stream"
                                         },
-                                        fileSizeBytes = att.sizeBytes,
-                                        onStateChanged = { state ->
-                                            uploadStates[tempId] = state
-                                            if (state is UploadState.Uploading) {
-                                                val idx = pendingUploads.indexOfFirst { it.messageId == tempId }
-                                                if (idx != -1) {
-                                                    pendingUploads[idx] = pendingUploads[idx].copy(uploadProgress = state.progress)
-                                                }
+                                        onProgress = { progress ->
+                                            uploadStates[tempId] = UploadState.Uploading(progress)
+                                            val idx = pendingUploads.indexOfFirst { it.messageId == tempId }
+                                            if (idx != -1) {
+                                                pendingUploads[idx] = pendingUploads[idx].copy(uploadProgress = progress)
                                             }
                                         }
                                     )
 
-                                    val (finalDownloadUrl, finalKey) = if (uploadResult.isSuccess) {
-                                        val completion = uploadResult.getOrThrow()
-                                        completion.downloadUrl to completion.key
-                                    } else {
-                                        // Fallback to local device URI if edge worker is unreachable
-                                        val errDesc = uploadResult.exceptionOrNull()?.message ?: "Worker offline"
-                                        Log.w("ConversationSheet", "Edge upload bypassed ($errDesc). Using local attachment URI.")
+                                    if (uploadRes.isLocalFallback && uploadRes.errorMessage != null) {
                                         withContext(Dispatchers.Main) {
-                                            Toast.makeText(
-                                                context,
-                                                "Worker offline: attachment saved locally. Message sent.",
-                                                Toast.LENGTH_SHORT
-                                            ).show()
+                                            Toast.makeText(context, uploadRes.errorMessage, Toast.LENGTH_LONG).show()
                                         }
-                                        att.uri.toString() to null
                                     }
 
                                     chatRepository.sendFileMessage(
                                         threadId = currentThread.id,
                                         senderProfile = currentUser,
                                         content = text,
-                                        attachmentUri = finalDownloadUrl,
+                                        attachmentUri = uploadRes.url,
                                         attachmentName = att.name,
                                         attachmentType = att.type,
                                         attachmentSize = att.size,
-                                        attachmentKey = finalKey
+                                        attachmentKey = null
                                     )
 
                                     pendingUploads.removeAll { it.messageId == tempId }
                                     uploadStates.remove(tempId)
                                 }
                             } else {
-                                val imageCommandPrompt = HuggingFaceImageEngine.extractImageCommandPrompt(text)
+                                val imageCommandPrompt = SiliconFlowImageEngine.extractImageCommandPrompt(text)
                                 if (imageCommandPrompt != null) {
                                     // User typed /imagine, /draw, /image, or natural language generation request
                                     isSending = true
@@ -801,13 +771,13 @@ fun ConversationThreadSheet(
                                         try {
                                             Toast.makeText(
                                                 context,
-                                                "🎨 Synthesizing illustration: \"$imageCommandPrompt\" with FLUX.1 Schnell...",
+                                                "🎨 Synthesizing illustration: \"$imageCommandPrompt\" with SiliconFlow FLUX.1 Schnell...",
                                                 Toast.LENGTH_LONG
                                             ).show()
 
                                             val result = AiImageGeneratorEngine.generateImage(
                                                 prompt = imageCommandPrompt,
-                                                model = HuggingFaceModel.FLUX_1_SCHNELL
+                                                model = SiliconFlowModel.FLUX_1_SCHNELL
                                             )
 
                                             if (result.isSuccess) {
@@ -817,50 +787,31 @@ fun ConversationThreadSheet(
                                                     bitmap = bitmap,
                                                     prefix = "chat_ai_${currentThread.id}"
                                                 )
-                                                val tempId = "ai_upload_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}"
                                                 val attName = "illustration_${System.currentTimeMillis()}.png"
-                                                val currentWorkerUrl = sessionManager.getCloudflareWorkerUrl()
 
-                                                val uploadResult = b2UploadManager.executeCompleteUploadWithKey(
-                                                    uploadId = tempId,
-                                                    workerEndpoint = currentWorkerUrl,
+                                                val uploadRes = catboxUploadManager.uploadFile(
                                                     contentResolver = context.contentResolver,
                                                     fileUri = cachedUri,
                                                     filename = attName,
-                                                    contentType = "image/png",
-                                                    fileSizeBytes = 0L,
-                                                    onStateChanged = { st ->
-                                                        uploadStates[tempId] = st
-                                                    }
+                                                    contentType = "image/png"
                                                 )
 
-                                                val (finalDownloadUrl, finalKey) = if (uploadResult.isSuccess) {
-                                                    val completion = uploadResult.getOrThrow()
-                                                    completion.downloadUrl to completion.key
-                                                } else {
-                                                    val failMsg = uploadResult.exceptionOrNull()?.message ?: "Upload to B2 failed."
-                                                    sessionManager.recordDiagnosticLog("B2_PUT_ERROR", failMsg)
+                                                if (uploadRes.isLocalFallback && uploadRes.errorMessage != null) {
                                                     withContext(Dispatchers.Main) {
-                                                        Toast.makeText(
-                                                            context,
-                                                            "Storage Notice: Sent via device cache. (B2: verify 'writeFiles' permission in B2 console)",
-                                                            Toast.LENGTH_LONG
-                                                        ).show()
+                                                        Toast.makeText(context, uploadRes.errorMessage, Toast.LENGTH_LONG).show()
                                                     }
-                                                    cachedUri.toString() to null
                                                 }
 
                                                 chatRepository.sendFileMessage(
                                                     threadId = currentThread.id,
                                                     senderProfile = currentUser,
                                                     content = "🎨 Prompt: \"$imageCommandPrompt\"",
-                                                    attachmentUri = finalDownloadUrl,
+                                                    attachmentUri = uploadRes.url,
                                                     attachmentName = attName,
                                                     attachmentType = "IMAGE",
                                                     attachmentSize = "AI Generated PNG",
-                                                    attachmentKey = finalKey
+                                                    attachmentKey = null
                                                 )
-                                                uploadStates.remove(tempId)
                                             } else {
                                                 val ex = result.exceptionOrNull()
                                                 val errMsg = ex?.localizedMessage ?: "Failed to generate image."
@@ -962,51 +913,35 @@ fun ConversationThreadSheet(
                 pendingUploads.add(placeholder)
 
                 coroutineScope.launch {
-                    val currentWorkerUrl = sessionManager.getCloudflareWorkerUrl()
-                    val uploadResult = b2UploadManager.executeCompleteUploadWithKey(
-                        uploadId = tempId,
-                        workerEndpoint = currentWorkerUrl,
+                    val uploadRes = catboxUploadManager.uploadFile(
                         contentResolver = context.contentResolver,
                         fileUri = cachedUri,
                         filename = attName,
                         contentType = "image/png",
-                        fileSizeBytes = 0L,
-                        onStateChanged = { st ->
-                            uploadStates[tempId] = st
-                            if (st is UploadState.Uploading) {
-                                val idx = pendingUploads.indexOfFirst { it.messageId == tempId }
-                                if (idx != -1) {
-                                    pendingUploads[idx] = pendingUploads[idx].copy(uploadProgress = st.progress)
-                                }
+                        onProgress = { progress ->
+                            uploadStates[tempId] = UploadState.Uploading(progress)
+                            val idx = pendingUploads.indexOfFirst { it.messageId == tempId }
+                            if (idx != -1) {
+                                pendingUploads[idx] = pendingUploads[idx].copy(uploadProgress = progress)
                             }
                         }
                     )
 
-                    val (finalDownloadUrl, finalKey) = if (uploadResult.isSuccess) {
-                        val completion = uploadResult.getOrThrow()
-                        completion.downloadUrl to completion.key
-                    } else {
-                        val failMsg = uploadResult.exceptionOrNull()?.message ?: "Upload to B2 failed."
-                        sessionManager.recordDiagnosticLog("B2_MODAL_PUT_ERROR", failMsg)
+                    if (uploadRes.isLocalFallback && uploadRes.errorMessage != null) {
                         withContext(Dispatchers.Main) {
-                            Toast.makeText(
-                                context,
-                                "Storage Notice: Sent via device cache. (B2: verify 'writeFiles' permission in B2 console)",
-                                Toast.LENGTH_LONG
-                            ).show()
+                            Toast.makeText(context, uploadRes.errorMessage, Toast.LENGTH_LONG).show()
                         }
-                        cachedUri.toString() to null
                     }
 
                     chatRepository.sendFileMessage(
                         threadId = currentThread.id,
                         senderProfile = currentUser,
                         content = prompt,
-                        attachmentUri = finalDownloadUrl,
+                        attachmentUri = uploadRes.url,
                         attachmentName = attName,
                         attachmentType = "IMAGE",
                         attachmentSize = "AI Generated PNG",
-                        attachmentKey = finalKey
+                        attachmentKey = null
                     )
 
                     pendingUploads.removeAll { it.messageId == tempId }
@@ -1041,7 +976,6 @@ fun ConversationThreadSheet(
             currentUrl = sessionManager.getCloudflareWorkerUrl(),
             onSaveUrl = { newUrl ->
                 sessionManager.setCloudflareWorkerUrl(newUrl)
-                b2UploadManager.configuredWorkerEndpoint = newUrl
                 Toast.makeText(context, "Storage gatekeeper URL updated", Toast.LENGTH_SHORT).show()
             },
             onDismiss = { showCloudflareWorkerSettings = false }
@@ -1053,29 +987,14 @@ fun ConversationThreadSheet(
 private fun MessageBubble(
     message: ChatMessage,
     isMe: Boolean,
-    context: Context,
-    b2UploadManager: B2UploadManager? = null
+    context: Context
 ) {
     val bubbleColor = if (isMe) DavBrandRoyalBlue else Color.White
     val textColor = if (isMe) Color.White else DavTextPrimary
     val alignment = if (isMe) Alignment.End else Alignment.Start
 
-    // Proactively verify and resolve temporary download URL for private Backblaze B2 bucket
-    var activeMediaUrl by remember(message.messageId, message.resolvedAttachmentUrl) {
-        mutableStateOf(message.resolvedAttachmentUrl ?: "")
-    }
-
-    LaunchedEffect(message.messageId, message.attachmentKey) {
-        if (!message.attachmentKey.isNullOrBlank() && b2UploadManager != null) {
-            val resolved = b2UploadManager.getOrRefreshDownloadUrl(
-                key = message.attachmentKey,
-                currentUrl = message.resolvedAttachmentUrl
-            )
-            if (resolved.isNotBlank() && resolved != activeMediaUrl) {
-                activeMediaUrl = resolved
-            }
-        }
-    }
+    // Direct CDN URL from Catbox or local fallback
+    val activeMediaUrl = message.resolvedAttachmentUrl?.ifBlank { null } ?: message.attachmentUri ?: ""
 
     val timeString = try {
         val format = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)

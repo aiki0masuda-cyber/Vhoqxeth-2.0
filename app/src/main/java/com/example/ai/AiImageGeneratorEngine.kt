@@ -16,81 +16,51 @@ enum class ImageAspectRatio(val label: String, val ratioWidth: Float, val ratioH
 }
 
 /**
- * Unified AI Image Generation service engine powered directly by Hugging Face Inference Router
- * with dynamic failover, lowest token consumption, and zero serverless proxy requests.
+ * Unified AI Image Generation service engine powered by SiliconFlow
+ * with FLUX.1 Schnell default and dynamic model failover.
  */
 object AiImageGeneratorEngine {
 
-    const val MODEL_NAME = "Hugging Face Inference Router"
+    const val MODEL_NAME = "SiliconFlow FLUX.1 Schnell"
 
     /**
-     * Generates an image with dynamic auto-failover, returning ImageGenerationResult
-     * so UI chips can shift visual states automatically.
+     * Generates an image with dynamic auto-failover via SiliconFlow.
      */
     suspend fun generateImageWithFailover(
         prompt: String,
         aspectRatio: ImageAspectRatio = ImageAspectRatio.SQUARE_1_1,
-        model: HuggingFaceModel = HuggingFaceModel.FLUX_1_SCHNELL,
-        customModelId: String = "",
-        apiKey: String = "",
-        lowTokenMode: Boolean = true
-    ): Result<ImageGenerationResult> {
-        return HuggingFaceImageEngine.generateImageWithFailover(
+        model: SiliconFlowModel = SiliconFlowModel.FLUX_1_SCHNELL,
+        apiKey: String = ""
+    ): Result<SiliconFlowResult> {
+        return SiliconFlowImageEngine.generateImageWithFailover(
             prompt = prompt,
             preferredModel = model,
-            customModelId = customModelId,
             aspectRatio = aspectRatio,
-            apiKey = apiKey,
-            lowTokenMode = lowTokenMode
+            apiKey = apiKey
         )
     }
 
     /**
-     * Generates an image from a natural language text prompt via direct Hugging Face Inference Router.
+     * Generates an image from a natural language text prompt via SiliconFlow.
      */
     suspend fun generateImage(
         prompt: String,
         aspectRatio: ImageAspectRatio = ImageAspectRatio.SQUARE_1_1,
-        model: HuggingFaceModel = HuggingFaceModel.FLUX_1_SCHNELL,
-        customModelId: String = "",
-        apiKey: String = "",
-        lowTokenMode: Boolean = true
+        model: SiliconFlowModel = SiliconFlowModel.FLUX_1_SCHNELL,
+        apiKey: String = ""
     ): Result<Bitmap> {
-        return HuggingFaceImageEngine.generateImage(
+        return SiliconFlowImageEngine.generateImageWithFailover(
             prompt = prompt,
-            model = model,
-            customModelId = customModelId,
+            preferredModel = model,
             aspectRatio = aspectRatio,
-            apiKey = apiKey,
-            lowTokenMode = lowTokenMode
-        )
-    }
-
-    /**
-     * Edits or refines an existing Bitmap using prompt instructions.
-     */
-    suspend fun editImage(
-        inputBitmap: Bitmap,
-        editInstruction: String,
-        model: HuggingFaceModel = HuggingFaceModel.FLUX_1_SCHNELL,
-        customModelId: String = "",
-        apiKey: String = "",
-        lowTokenMode: Boolean = true
-    ): Result<Bitmap> {
-        return HuggingFaceImageEngine.editImage(
-            inputBitmap = inputBitmap,
-            editInstruction = editInstruction,
-            model = model,
-            customModelId = customModelId,
-            apiKey = apiKey,
-            lowTokenMode = lowTokenMode
-        )
+            apiKey = apiKey
+        ).map { it.bitmap }
     }
 
     /**
      * Caches the resulting Bitmap to the local app cache directory and returns a content Uri.
      */
     fun saveBitmapToLocalCache(context: Context, bitmap: Bitmap, prefix: String = "ai_art"): Uri {
-        return HuggingFaceImageEngine.saveBitmapToLocalCache(context, bitmap, prefix)
+        return SiliconFlowImageEngine.saveBitmapToLocalCache(context, bitmap, prefix)
     }
 }

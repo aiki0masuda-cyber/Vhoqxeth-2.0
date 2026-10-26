@@ -155,6 +155,24 @@ class SessionManager(context: Context) {
         prefs.edit().putString(KEY_HUGGINGFACE_CUSTOM_MODEL, customModelId.trim()).commit()
     }
 
+    fun getSiliconFlowApiKey(): String {
+        return prefs.getString(KEY_SILICONFLOW_API_KEY, "") ?: ""
+    }
+
+    fun setSiliconFlowApiKey(key: String) {
+        prefs.edit().putString(KEY_SILICONFLOW_API_KEY, key.trim()).commit()
+    }
+
+    fun getSiliconFlowModel(): String {
+        return prefs.getString(KEY_SILICONFLOW_MODEL, "black-forest-labs/FLUX.1-schnell")
+            ?.ifBlank { "black-forest-labs/FLUX.1-schnell" }
+            ?: "black-forest-labs/FLUX.1-schnell"
+    }
+
+    fun setSiliconFlowModel(modelId: String) {
+        prefs.edit().putString(KEY_SILICONFLOW_MODEL, modelId.trim()).commit()
+    }
+
     fun isLowTokenModeEnabled(): Boolean {
         return prefs.getBoolean(KEY_LOW_TOKEN_MODE, true)
     }
@@ -188,6 +206,8 @@ class SessionManager(context: Context) {
         private const val KEY_HUGGINGFACE_API_KEY = "huggingface_api_key"
         private const val KEY_HUGGINGFACE_MODEL = "huggingface_model"
         private const val KEY_HUGGINGFACE_CUSTOM_MODEL = "huggingface_custom_model"
+        private const val KEY_SILICONFLOW_API_KEY = "siliconflow_api_key"
+        private const val KEY_SILICONFLOW_MODEL = "siliconflow_model"
         private const val KEY_LOW_TOKEN_MODE = "hf_low_token_mode"
         private const val KEY_ADMIN_DIAGNOSTIC_LOGS = "admin_diagnostic_logs"
         private const val KEY_IS_LOGGED_IN = "is_logged_in"

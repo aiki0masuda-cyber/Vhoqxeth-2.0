@@ -4,13 +4,12 @@ import android.content.Context
 import android.graphics.Bitmap
 import androidx.test.core.app.ApplicationProvider
 import com.example.ai.AiImageGeneratorEngine
-import com.example.ai.HuggingFaceImageEngine
-import com.example.ai.HuggingFaceModel
 import com.example.ai.ImageAspectRatio
-import com.example.ai.ImageGenerationResult
-import com.example.data.B2UploadManager
+import com.example.ai.SiliconFlowImageEngine
+import com.example.ai.SiliconFlowModel
+import com.example.ai.SiliconFlowResult
+import com.example.data.CatboxUploadManager
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -25,70 +24,48 @@ import java.io.File
 class AiImageGeneratorEngineTest {
 
     @Test
-    fun testModelNameMatchesHuggingFace() {
-        assertTrue(AiImageGeneratorEngine.MODEL_NAME.contains("Hugging Face"))
+    fun testCatboxUploadManagerSpecifications() {
+        assertEquals("https://catbox.moe/user/api.php", CatboxUploadManager.CATBOX_API_ENDPOINT)
+        assertEquals(200 * 1024 * 1024L, CatboxUploadManager.MAX_SIZE_BYTES)
+        assertEquals(
+            "Upload failed. Please ensure the file size is under 200MB.",
+            CatboxUploadManager.SIZE_LIMIT_ALERT
+        )
+        assertEquals("b38bbe619e7dc69e16d7df563", CatboxUploadManager.getUniversalUserhash())
     }
 
     @Test
-    fun testEndpointUsesInferenceRouter() {
-        assertEquals("https://router.huggingface.co/hf-inference/models", HuggingFaceImageEngine.ROUTER_INFERENCE_URL)
-        assertFalse(HuggingFaceImageEngine.ROUTER_INFERENCE_URL.contains("api-inference.huggingface.co"))
+    fun testSiliconFlowEngineModels() {
+        assertTrue(AiImageGeneratorEngine.MODEL_NAME.contains("SiliconFlow"))
+        assertEquals("https://api.siliconflow.cn/v1/images/generations", SiliconFlowImageEngine.SILICONFLOW_API_URL)
+
+        assertEquals("black-forest-labs/FLUX.1-schnell", SiliconFlowModel.FLUX_1_SCHNELL.id)
+        assertTrue(SiliconFlowModel.FLUX_1_SCHNELL.isPrimary)
+        assertEquals(4, SiliconFlowModel.FLUX_1_SCHNELL.defaultSteps)
+
+        assertEquals("stabilityai/stable-diffusion-3-medium", SiliconFlowModel.SD_3_MEDIUM.id)
+        assertEquals("black-forest-labs/FLUX.1-dev", SiliconFlowModel.FLUX_1_DEV.id)
+
+        assertEquals(SiliconFlowModel.FLUX_1_SCHNELL, SiliconFlowModel.fromId("unknown-model-id"))
     }
 
     @Test
-    fun testTokenSanitization() {
-        assertEquals("hf_abc123", HuggingFaceImageEngine.sanitizeApiKey("Bearer hf_abc123"))
-        assertEquals("hf_abc123", HuggingFaceImageEngine.sanitizeApiKey("bearer hf_abc123"))
-        assertEquals("hf_abc123", HuggingFaceImageEngine.sanitizeApiKey("  \"hf_abc123\"  "))
-        assertEquals("hf_abc123", HuggingFaceImageEngine.sanitizeApiKey("'hf_abc123'"))
-        assertEquals("hf_abc123", HuggingFaceImageEngine.sanitizeApiKey("   hf_abc123   "))
+    fun testSiliconFlowApiKeySanitization() {
+        assertEquals("sk-test12345", SiliconFlowImageEngine.sanitizeApiKey("Bearer sk-test12345"))
+        assertEquals("sk-test12345", SiliconFlowImageEngine.sanitizeApiKey("bearer sk-test12345"))
+        assertEquals("sk-test12345", SiliconFlowImageEngine.sanitizeApiKey("  \"sk-test12345\"  "))
+        assertEquals("sk-test12345", SiliconFlowImageEngine.sanitizeApiKey("'sk-test12345'"))
     }
 
     @Test
     fun testExtractImageCommandPrompt() {
-        assertEquals("solar system orbits", HuggingFaceImageEngine.extractImageCommandPrompt("/imagine solar system orbits"))
-        assertEquals("plant cell diagram", HuggingFaceImageEngine.extractImageCommandPrompt("/draw plant cell diagram"))
-        assertEquals("quantum physics visual", HuggingFaceImageEngine.extractImageCommandPrompt("/image quantum physics visual"))
-        assertEquals("DNA double helix", HuggingFaceImageEngine.extractImageCommandPrompt("generate an image of DNA double helix"))
-        assertEquals("pythagorean proof", HuggingFaceImageEngine.extractImageCommandPrompt("draw a diagram of pythagorean proof"))
-        assertEquals("harappan unicorn seal", HuggingFaceImageEngine.extractImageCommandPrompt("create illustration of harappan unicorn seal"))
-        assertNull(HuggingFaceImageEngine.extractImageCommandPrompt("Hello class, remember the assignment is due tomorrow."))
-    }
-
-    @Test
-    fun testRateLimitMessageMatchesExactDirective() {
-        val expectedMessage = "The free image generation pipeline is currently busy. Please wait a moment and click generate again."
-        assertTrue(expectedMessage.contains("currently busy"))
-        assertTrue(expectedMessage.contains("click generate again"))
-    }
-
-    @Test
-    fun testHuggingFaceModelsConfiguration() {
-        assertEquals("black-forest-labs/FLUX.1-schnell", HuggingFaceModel.FLUX_1_SCHNELL.id)
-        assertEquals(4, HuggingFaceModel.FLUX_1_SCHNELL.defaultInferenceSteps)
-        assertTrue(HuggingFaceModel.FLUX_1_SCHNELL.isLowestTokenTier)
-
-        assertEquals("stabilityai/sdxl-turbo", HuggingFaceModel.SDXL_TURBO.id)
-        assertEquals(1, HuggingFaceModel.SDXL_TURBO.defaultInferenceSteps)
-        assertTrue(HuggingFaceModel.SDXL_TURBO.isLowestTokenTier)
-
-        assertEquals("stabilityai/stable-diffusion-xl-base-1.0", HuggingFaceModel.STABLE_DIFFUSION_XL.id)
-        assertEquals(25, HuggingFaceModel.STABLE_DIFFUSION_XL.defaultInferenceSteps)
-        assertFalse(HuggingFaceModel.STABLE_DIFFUSION_XL.isLowestTokenTier)
-
-        assertEquals(HuggingFaceModel.FLUX_1_SCHNELL, HuggingFaceModel.fromId("non-existent-id"))
-        assertEquals(HuggingFaceModel.STABLE_DIFFUSION_XL, HuggingFaceModel.fromId("stabilityai/stable-diffusion-xl-base-1.0"))
-    }
-
-    @Test
-    fun testPromptOptimizationForLowestTokens() {
-        val bloatedPrompt = "A plant cell cross section, highly detailed, 8k resolution, trending on artstation, masterpiece"
-        val optimized = HuggingFaceImageEngine.optimizePromptForLowestTokens(bloatedPrompt)
-
-        assertFalse(optimized.contains("8k resolution", ignoreCase = true))
-        assertFalse(optimized.contains("trending on artstation", ignoreCase = true))
-        assertFalse(optimized.contains("masterpiece", ignoreCase = true))
-        assertTrue(optimized.contains("plant cell", ignoreCase = true))
+        assertEquals("solar system orbits", SiliconFlowImageEngine.extractImageCommandPrompt("/imagine solar system orbits"))
+        assertEquals("plant cell diagram", SiliconFlowImageEngine.extractImageCommandPrompt("/draw plant cell diagram"))
+        assertEquals("quantum physics visual", SiliconFlowImageEngine.extractImageCommandPrompt("/image quantum physics visual"))
+        assertEquals("DNA double helix", SiliconFlowImageEngine.extractImageCommandPrompt("generate an image of DNA double helix"))
+        assertEquals("pythagorean proof", SiliconFlowImageEngine.extractImageCommandPrompt("draw a diagram of pythagorean proof"))
+        assertEquals("harappan unicorn seal", SiliconFlowImageEngine.extractImageCommandPrompt("create illustration of harappan unicorn seal"))
+        assertNull(SiliconFlowImageEngine.extractImageCommandPrompt("Hello class, remember the assignment is due tomorrow."))
     }
 
     @Test
@@ -113,28 +90,16 @@ class AiImageGeneratorEngineTest {
     }
 
     @Test
-    fun testCustomModelIdConfiguration() {
-        val customModel = "my-org/custom-fine-tuned-sdxl"
-        assertTrue(customModel.contains("/"))
-    }
-
-    @Test
-    fun testDynamicFailoverResultDataClass() {
+    fun testSiliconFlowResultDataClass() {
         val testBitmap = Bitmap.createBitmap(50, 50, Bitmap.Config.ARGB_8888)
-        val result = ImageGenerationResult(
+        val result = SiliconFlowResult(
             bitmap = testBitmap,
-            usedModel = HuggingFaceModel.FLUX_1_SCHNELL,
+            usedModel = SiliconFlowModel.FLUX_1_SCHNELL,
             wasFailover = true,
-            failoverMessage = "Auto-routed to FLUX.1 Schnell"
+            imageUrl = "https://files.catbox.moe/abc123.png"
         )
         assertTrue(result.wasFailover)
-        assertEquals(HuggingFaceModel.FLUX_1_SCHNELL, result.usedModel)
-        assertEquals("Auto-routed to FLUX.1 Schnell", result.failoverMessage)
-    }
-
-    @Test
-    fun testB2UploadManagerConfig() {
-        val b2 = B2UploadManager()
-        assertTrue(b2.getEffectiveWorkerEndpoint().contains("b2-chat-gatekeeper"))
+        assertEquals(SiliconFlowModel.FLUX_1_SCHNELL, result.usedModel)
+        assertEquals("https://files.catbox.moe/abc123.png", result.imageUrl)
     }
 }
