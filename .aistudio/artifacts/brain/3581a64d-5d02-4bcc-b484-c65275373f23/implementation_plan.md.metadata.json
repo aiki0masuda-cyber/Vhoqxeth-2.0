@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan to replace Backblaze B2 completely with Catbox.moe for all chat file uploads, and transition the image generation architecture from Hugging Face to SiliconFlow.",
-  "updatedAt":  "2026-10-26T12:52:08.716070592Z",
+  "summary":  "Implementation plan for integrating the universal SiliconFlow API key:\n- Add SILICONFLOW_API_KEY placeholder to .env.example for Secrets Gradle Plugin injection into BuildConfig.\n- Enhance SiliconFlowImageEngine to resolve the universal secret from BuildConfig while masking sensitive key values.\n- Update AiGenerateImageDialog to use the universal secret by default, removing mandatory key entry for users while retaining an optional override in advanced settings.\n- Display a friendly administrator prompt if the secret key has not been configured in the AI Studio Secrets panel.\n- Add unit tests in Robolectric for key resolution, priority overriding, and sanitization.",
+  "updatedAt":  "2026-10-28T11:13:03.259394078Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

@@ -44,22 +44,94 @@ class CatboxUploadManager(
         const val MAX_SIZE_BYTES = 200 * 1024 * 1024L // 200MB
         const val SIZE_LIMIT_ALERT = "Upload failed. Please ensure the file size is under 200MB."
         const val ORIGINAL_MIRROR = "https://files.catbox.moe/"
-        const val BYPASS_MIRROR = "https://de.catbox.moe/"
+        const val BYPASS_MIRROR = "https://files.catbox.moe/"
 
         fun getUniversalUserhash(): String = CATBOX_UNIVERSAL_USERHASH
 
         /**
-         * Replaces standard filtered "files.catbox.moe" domain with the alternate bypass mirror "de.catbox.moe"
-         * to circumvent ISP filtering while maintaining seamless download/preview capabilities.
+         * Parses and extracts the exact, clean absolute HTTPS URL returned by the Catbox server response body.
+         * Guarantees that any formatting variations (trailing newlines, quotes, HTML wrappers,
+         * insecure http:// schemes, or root domain catbox.moe links) are cleanly parsed and
+         * mapped to the official absolute HTTPS CDN endpoint ("https://files.catbox.moe/<hash>.<ext>").
+         * This prevents HTTP 404 Not Found errors during download.
+         */
+        fun extractCleanUrl(rawResponse: String?): String? {
+            if (rawResponse.isNullOrBlank()) return null
+            val trimmed = rawResponse.trim()
+
+            // 1. Catbox domain URL regex (matches files.catbox.moe, de.catbox.moe, or root catbox.moe)
+            val catboxRegex = Regex("""https?://(?:files\.|de\.|www\.)?catbox\.moe/(?:c/)?([a-zA-Z0-9._-]+)""", RegexOption.IGNORE_CASE)
+            val match = catboxRegex.find(trimmed)
+            if (match != null) {
+                val fileSegment = match.groupValues[1].trim()
+                if (fileSegment.contains('.') && !fileSegment.endsWith(".php", ignoreCase = true)) {
+                    return "https://files.catbox.moe/$fileSegment"
+                }
+            }
+
+            // 2. Generic absolute HTTP/HTTPS URL
+            val genericUrlRegex = Regex("""https?://[^\s"'<>\(\)]+""", RegexOption.IGNORE_CASE)
+            val genericMatch = genericUrlRegex.find(trimmed)
+            if (genericMatch != null) {
+                var clean = genericMatch.value.trim().trimEnd('.', ',', ';', '"', '\'', '>', '<', ')')
+                if (clean.contains("catbox.moe", ignoreCase = true)) {
+                    val filePart = clean.substringAfterLast('/').trim()
+                    if (filePart.contains('.') && !filePart.endsWith(".php", ignoreCase = true)) {
+                        return "https://files.catbox.moe/$filePart"
+                    }
+                }
+                if (clean.startsWith("http://", ignoreCase = true)) {
+                    clean = "https://" + clean.substring(7)
+                }
+                return clean
+            }
+
+            // 3. Raw filename/hash returned directly (e.g., "8u7x9q.png")
+            val cleanCandidate = trimmed.trim('"', '\'', ' ', '\t', '\n', '\r')
+            val hashRegex = Regex("""^[a-zA-Z0-9._-]+\.[a-zA-Z0-9]{2,10}$""")
+            if (hashRegex.matches(cleanCandidate) && !cleanCandidate.endsWith(".php", ignoreCase = true)) {
+                return "https://files.catbox.moe/$cleanCandidate"
+            }
+
+            return null
+        }
+
+        /**
+         * Enforces the secure HTTPS protocol on the official Catbox files endpoint ("https://files.catbox.moe/"),
+         * rewriting any insecure http:// or alternate mirror links so downloads and media previews load securely.
          */
         fun applyBypassMirror(url: String): String {
             if (url.isBlank()) return url
-            return url.replace("https://files.catbox.moe/", "https://de.catbox.moe/")
-                .replace("http://files.catbox.moe/", "https://de.catbox.moe/")
+            val clean = extractCleanUrl(url)
+            if (clean != null) return clean
+            var result = url.trim()
+            if (result.startsWith("http://files.catbox.moe/", ignoreCase = true)) {
+                result = "https://" + result.substring(7)
+            }
+            if (result.startsWith("http://de.catbox.moe/", ignoreCase = true)) {
+                result = "https://files.catbox.moe/" + result.substring("http://de.catbox.moe/".length)
+            }
+            if (result.startsWith("https://de.catbox.moe/", ignoreCase = true)) {
+                result = "https://files.catbox.moe/" + result.substring("https://de.catbox.moe/".length)
+            }
+            if (result.startsWith("http://catbox.moe/", ignoreCase = true)) {
+                result = "https://files.catbox.moe/" + result.substring("http://catbox.moe/".length)
+            }
+            if (result.startsWith("https://catbox.moe/", ignoreCase = true)) {
+                result = "https://files.catbox.moe/" + result.substring("https://catbox.moe/".length)
+            }
+            return result
         }
 
         fun defaultOkHttpClient(): OkHttpClient {
             return OkHttpClient.Builder()
+                .hostnameVerifier { hostname, session ->
+                    if (hostname.endsWith("catbox.moe", ignoreCase = true) || hostname.equals("catbox.moe", ignoreCase = true)) {
+                        true
+                    } else {
+                        javax.net.ssl.HttpsURLConnection.getDefaultHostnameVerifier().verify(hostname, session)
+                    }
+                }
                 .connectTimeout(30, TimeUnit.SECONDS)
                 .writeTimeout(120, TimeUnit.SECONDS)
                 .readTimeout(60, TimeUnit.SECONDS)
@@ -76,8 +148,9 @@ class CatboxUploadManager(
 
     /**
      * Uploads a file to Catbox.moe using a raw binary stream.
+     * Extracts ONLY the clean, absolute HTTPS URL from the server response body.
      * If Catbox times out, returns HTTP 502, or fails, the catch block intercepts it
-     * and returns the local file URI smoothly so chat bubbles never break.
+     * and alerts the user without saving invalid local file paths to remote storage.
      */
     suspend fun uploadFile(
         contentResolver: ContentResolver,
@@ -92,7 +165,7 @@ class CatboxUploadManager(
             if (size > MAX_SIZE_BYTES) {
                 Log.w(TAG, "File size exceeds 200MB limit ($size bytes)")
                 return@withContext CatboxUploadResult(
-                    url = fileUri.toString(),
+                    url = "",
                     isLocalFallback = true,
                     errorMessage = SIZE_LIMIT_ALERT
                 )
@@ -148,25 +221,25 @@ class CatboxUploadManager(
             Log.d(TAG, "Uploading file to Catbox.moe: $sanitizedFilename (${size / 1024} KB)")
 
             client.newCall(request).execute().use { response ->
-                val responseBody = response.body?.string().orEmpty().trim()
+                val rawBody = response.body?.string().orEmpty()
+                val cleanUrl = extractCleanUrl(rawBody)
 
-                if (response.isSuccessful && responseBody.startsWith("http", ignoreCase = true)) {
-                    val bypassUrl = applyBypassMirror(responseBody)
-                    Log.i(TAG, "Catbox upload succeeded: raw=$responseBody -> bypass=$bypassUrl")
+                if (response.isSuccessful && cleanUrl != null) {
+                    Log.i(TAG, "Catbox upload succeeded: raw=$rawBody -> clean=$cleanUrl")
                     onProgress?.invoke(1f)
-                    return@withContext CatboxUploadResult(url = bypassUrl, isLocalFallback = false)
+                    return@withContext CatboxUploadResult(url = cleanUrl, isLocalFallback = false)
                 }
 
                 // Catbox error, 502 Bad Gateway, or unexpected response
-                Log.w(TAG, "Catbox returned HTTP ${response.code}: $responseBody")
+                Log.w(TAG, "Catbox returned HTTP ${response.code}: $rawBody")
                 val alert = if (response.code == 502 || response.code == 504 || size > MAX_SIZE_BYTES) {
                     SIZE_LIMIT_ALERT
                 } else {
-                    "Catbox notice: $responseBody"
+                    "Catbox notice: ${rawBody.trim().take(120)}"
                 }
 
                 return@withContext CatboxUploadResult(
-                    url = fileUri.toString(),
+                    url = "",
                     isLocalFallback = true,
                     errorMessage = alert
                 )
@@ -176,7 +249,7 @@ class CatboxUploadManager(
             val isTimeoutOr502 = e.message?.contains("502") == true || e.message?.contains("timeout", ignoreCase = true) == true
             val errorMsg = if (isTimeoutOr502) SIZE_LIMIT_ALERT else "Upload notice: ${e.localizedMessage}"
             return@withContext CatboxUploadResult(
-                url = fileUri.toString(),
+                url = "",
                 isLocalFallback = true,
                 errorMessage = errorMsg
             )

@@ -192,6 +192,11 @@ object SiliconFlowImageEngine {
         apiKey: String
     ): Result<Pair<Bitmap, String?>> {
         val effectiveKey = sanitizeApiKey(apiKey).ifBlank { resolveConfiguredApiKey() }
+        if (effectiveKey.isBlank()) {
+            return Result.failure(
+                IOException("SiliconFlow API key is not configured. Please add SILICONFLOW_API_KEY in the AI Studio Secrets panel.")
+            )
+        }
 
         val imageSize = when (aspectRatio) {
             ImageAspectRatio.LANDSCAPE_16_9 -> "1024x576"
@@ -212,10 +217,7 @@ object SiliconFlowImageEngine {
             .url(SILICONFLOW_API_URL)
             .post(payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
             .header("Accept", "application/json")
-
-        if (effectiveKey.isNotBlank()) {
-            requestBuilder.header("Authorization", "Bearer $effectiveKey")
-        }
+            .header("Authorization", "Bearer $effectiveKey")
 
         return try {
             val response = httpClient.newCall(requestBuilder.build()).execute()
@@ -264,19 +266,39 @@ object SiliconFlowImageEngine {
     }
 
     /**
+     * Checks if a string represents an unconfigured placeholder value.
+     */
+    fun isPlaceholderKey(key: String): Boolean {
+        val trimmed = key.trim()
+        return trimmed.isEmpty() ||
+            trimmed.equals("sk_placeholder_key", ignoreCase = true) ||
+            trimmed.equals("hf_placeholder_key", ignoreCase = true) ||
+            trimmed.equals("MY_NEW_API_KEY_DEFAULT_VALUE", ignoreCase = true) ||
+            trimmed.equals("your_api_key_here", ignoreCase = true) ||
+            trimmed.equals("placeholder", ignoreCase = true)
+    }
+
+    /**
+     * Returns true if a valid universal SiliconFlow secret key is configured in BuildConfig.
+     */
+    fun hasUniversalApiKey(): Boolean {
+        return resolveConfiguredApiKey().isNotBlank()
+    }
+
+    /**
      * Resolves API key from BuildConfig or environment.
      */
     fun resolveConfiguredApiKey(): String {
         return try {
             val field = Class.forName("com.example.BuildConfig").getField("SILICONFLOW_API_KEY")
             val key = (field.get(null) as? String)?.trim().orEmpty()
-            if (key == "sk_placeholder_key" || key == "MY_NEW_API_KEY_DEFAULT_VALUE") "" else sanitizeApiKey(key)
+            if (isPlaceholderKey(key)) "" else sanitizeApiKey(key)
         } catch (_: Exception) {
             // Also check fallback HUGGINGFACE_API_KEY field if user stored their key there
             try {
                 val field = Class.forName("com.example.BuildConfig").getField("HUGGINGFACE_API_KEY")
                 val key = (field.get(null) as? String)?.trim().orEmpty()
-                if (key.startsWith("sk-")) sanitizeApiKey(key) else ""
+                if (key.startsWith("sk-") && !isPlaceholderKey(key)) sanitizeApiKey(key) else ""
             } catch (_: Exception) {
                 ""
             }

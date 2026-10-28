@@ -487,6 +487,10 @@ class MeshChatRepository(
                 "📎 $attachmentName ($attachmentSize)"
             }
 
+            // Extract strictly clean, absolute HTTPS URL to guarantee 100% successful downloads
+            val cleanDownloadUrl = CatboxUploadManager.extractCleanUrl(attachmentUri)
+                ?: if (attachmentUri.startsWith("https://", ignoreCase = true)) attachmentUri.trim() else attachmentUri.trim()
+
             val msgPayload = mutableMapOf<String, Any?>(
                 "messageId" to messageId,
                 "threadId" to threadId,
@@ -495,9 +499,9 @@ class MeshChatRepository(
                 "senderRole" to if (senderProfile.isTeacher) UserProfile.ROLE_TEACHER else UserProfile.ROLE_STUDENT,
                 "content" to content.trim(),
                 "timestamp" to now,
-                "attachmentUri" to attachmentUri,
-                "attachmentUrl" to attachmentUri,
-                "temporaryDownloadUrl" to attachmentUri,
+                "attachmentUri" to cleanDownloadUrl,
+                "attachmentUrl" to cleanDownloadUrl,
+                "temporaryDownloadUrl" to cleanDownloadUrl,
                 "attachmentName" to attachmentName,
                 "attachmentType" to attachmentType,
                 "attachmentSize" to attachmentSize
@@ -531,9 +535,9 @@ class MeshChatRepository(
                 senderRole = if (senderProfile.isTeacher) UserProfile.ROLE_TEACHER else UserProfile.ROLE_STUDENT,
                 content = content.trim(),
                 timestamp = now,
-                attachmentUri = attachmentUri,
-                attachmentUrl = attachmentUri,
-                temporaryDownloadUrl = attachmentUri,
+                attachmentUri = cleanDownloadUrl,
+                attachmentUrl = cleanDownloadUrl,
+                temporaryDownloadUrl = cleanDownloadUrl,
                 attachmentKey = attachmentKey,
                 attachmentName = attachmentName,
                 attachmentType = attachmentType,

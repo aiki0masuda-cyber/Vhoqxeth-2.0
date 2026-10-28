@@ -501,21 +501,24 @@ fun ConversationThreadSheet(
                                             }
                                         }
                                     )
-                                    if (uploadRes.isLocalFallback && uploadRes.errorMessage != null) {
+                                    val cleanDownloadUrl = CatboxUploadManager.extractCleanUrl(uploadRes.url) ?: uploadRes.url
+                                    if (cleanDownloadUrl.isNotBlank() && cleanDownloadUrl.startsWith("https://")) {
+                                        chatRepository.sendFileMessage(
+                                            threadId = currentThread.id,
+                                            senderProfile = currentUser,
+                                            content = msg.content,
+                                            attachmentUri = cleanDownloadUrl,
+                                            attachmentName = msg.attachmentName ?: "File",
+                                            attachmentType = msg.attachmentType ?: "FILE",
+                                            attachmentSize = msg.attachmentSize ?: "",
+                                            attachmentKey = null
+                                        )
+                                    } else {
+                                        val errorAlert = uploadRes.errorMessage ?: "Upload failed. Please try again."
                                         withContext(Dispatchers.Main) {
-                                            Toast.makeText(context, uploadRes.errorMessage, Toast.LENGTH_LONG).show()
+                                            Toast.makeText(context, errorAlert, Toast.LENGTH_LONG).show()
                                         }
                                     }
-                                    chatRepository.sendFileMessage(
-                                        threadId = currentThread.id,
-                                        senderProfile = currentUser,
-                                        content = msg.content,
-                                        attachmentUri = uploadRes.url,
-                                        attachmentName = msg.attachmentName ?: "File",
-                                        attachmentType = msg.attachmentType ?: "FILE",
-                                        attachmentSize = msg.attachmentSize ?: "",
-                                        attachmentKey = null
-                                    )
                                     pendingUploads.removeAll { it.messageId == msg.messageId }
                                     uploadStates.remove(msg.messageId)
                                 }
@@ -743,22 +746,24 @@ fun ConversationThreadSheet(
                                         }
                                     )
 
-                                    if (uploadRes.isLocalFallback && uploadRes.errorMessage != null) {
+                                    val cleanDownloadUrl = CatboxUploadManager.extractCleanUrl(uploadRes.url) ?: uploadRes.url
+                                    if (cleanDownloadUrl.isNotBlank() && cleanDownloadUrl.startsWith("https://")) {
+                                        chatRepository.sendFileMessage(
+                                            threadId = currentThread.id,
+                                            senderProfile = currentUser,
+                                            content = text,
+                                            attachmentUri = cleanDownloadUrl,
+                                            attachmentName = att.name,
+                                            attachmentType = att.type,
+                                            attachmentSize = att.size,
+                                            attachmentKey = null
+                                        )
+                                    } else {
+                                        val errorAlert = uploadRes.errorMessage ?: "Upload failed. Please ensure file is under 200MB."
                                         withContext(Dispatchers.Main) {
-                                            Toast.makeText(context, uploadRes.errorMessage, Toast.LENGTH_LONG).show()
+                                            Toast.makeText(context, errorAlert, Toast.LENGTH_LONG).show()
                                         }
                                     }
-
-                                    chatRepository.sendFileMessage(
-                                        threadId = currentThread.id,
-                                        senderProfile = currentUser,
-                                        content = text,
-                                        attachmentUri = uploadRes.url,
-                                        attachmentName = att.name,
-                                        attachmentType = att.type,
-                                        attachmentSize = att.size,
-                                        attachmentKey = null
-                                    )
 
                                     pendingUploads.removeAll { it.messageId == tempId }
                                     uploadStates.remove(tempId)
@@ -797,22 +802,24 @@ fun ConversationThreadSheet(
                                                     contentType = "image/png"
                                                 )
 
-                                                if (uploadRes.isLocalFallback && uploadRes.errorMessage != null) {
+                                                val cleanDownloadUrl = CatboxUploadManager.extractCleanUrl(uploadRes.url) ?: uploadRes.url
+                                                if (cleanDownloadUrl.isNotBlank() && cleanDownloadUrl.startsWith("https://")) {
+                                                    chatRepository.sendFileMessage(
+                                                        threadId = currentThread.id,
+                                                        senderProfile = currentUser,
+                                                        content = "🎨 Prompt: \"$imageCommandPrompt\"",
+                                                        attachmentUri = cleanDownloadUrl,
+                                                        attachmentName = attName,
+                                                        attachmentType = "IMAGE",
+                                                        attachmentSize = "AI Generated PNG",
+                                                        attachmentKey = null
+                                                    )
+                                                } else {
+                                                    val errorAlert = uploadRes.errorMessage ?: "Upload failed."
                                                     withContext(Dispatchers.Main) {
-                                                        Toast.makeText(context, uploadRes.errorMessage, Toast.LENGTH_LONG).show()
+                                                        Toast.makeText(context, errorAlert, Toast.LENGTH_LONG).show()
                                                     }
                                                 }
-
-                                                chatRepository.sendFileMessage(
-                                                    threadId = currentThread.id,
-                                                    senderProfile = currentUser,
-                                                    content = "🎨 Prompt: \"$imageCommandPrompt\"",
-                                                    attachmentUri = uploadRes.url,
-                                                    attachmentName = attName,
-                                                    attachmentType = "IMAGE",
-                                                    attachmentSize = "AI Generated PNG",
-                                                    attachmentKey = null
-                                                )
                                             } else {
                                                 val ex = result.exceptionOrNull()
                                                 val errMsg = ex?.localizedMessage ?: "Failed to generate image."
@@ -928,22 +935,24 @@ fun ConversationThreadSheet(
                         }
                     )
 
-                    if (uploadRes.isLocalFallback && uploadRes.errorMessage != null) {
+                    val cleanDownloadUrl = CatboxUploadManager.extractCleanUrl(uploadRes.url) ?: uploadRes.url
+                    if (cleanDownloadUrl.isNotBlank() && cleanDownloadUrl.startsWith("https://")) {
+                        chatRepository.sendFileMessage(
+                            threadId = currentThread.id,
+                            senderProfile = currentUser,
+                            content = prompt,
+                            attachmentUri = cleanDownloadUrl,
+                            attachmentName = attName,
+                            attachmentType = "IMAGE",
+                            attachmentSize = "AI Generated PNG",
+                            attachmentKey = null
+                        )
+                    } else {
+                        val errorAlert = uploadRes.errorMessage ?: "Upload failed."
                         withContext(Dispatchers.Main) {
-                            Toast.makeText(context, uploadRes.errorMessage, Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, errorAlert, Toast.LENGTH_LONG).show()
                         }
                     }
-
-                    chatRepository.sendFileMessage(
-                        threadId = currentThread.id,
-                        senderProfile = currentUser,
-                        content = prompt,
-                        attachmentUri = uploadRes.url,
-                        attachmentName = attName,
-                        attachmentType = "IMAGE",
-                        attachmentSize = "AI Generated PNG",
-                        attachmentKey = null
-                    )
 
                     pendingUploads.removeAll { it.messageId == tempId }
                     uploadStates.remove(tempId)

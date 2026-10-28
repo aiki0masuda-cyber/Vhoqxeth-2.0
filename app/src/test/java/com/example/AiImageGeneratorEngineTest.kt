@@ -9,7 +9,9 @@ import com.example.ai.SiliconFlowImageEngine
 import com.example.ai.SiliconFlowModel
 import com.example.ai.SiliconFlowResult
 import com.example.data.CatboxUploadManager
+import com.example.util.FileAttachmentActionManager
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -55,6 +57,29 @@ class AiImageGeneratorEngineTest {
         assertEquals("sk-test12345", SiliconFlowImageEngine.sanitizeApiKey("bearer sk-test12345"))
         assertEquals("sk-test12345", SiliconFlowImageEngine.sanitizeApiKey("  \"sk-test12345\"  "))
         assertEquals("sk-test12345", SiliconFlowImageEngine.sanitizeApiKey("'sk-test12345'"))
+        assertEquals("sk-test12345", SiliconFlowImageEngine.sanitizeApiKey(" \n sk-test12345 \t "))
+    }
+
+    @Test
+    fun testSiliconFlowPlaceholderDetection() {
+        assertTrue(SiliconFlowImageEngine.isPlaceholderKey(""))
+        assertTrue(SiliconFlowImageEngine.isPlaceholderKey("   "))
+        assertTrue(SiliconFlowImageEngine.isPlaceholderKey("sk_placeholder_key"))
+        assertTrue(SiliconFlowImageEngine.isPlaceholderKey("SK_PLACEHOLDER_KEY"))
+        assertTrue(SiliconFlowImageEngine.isPlaceholderKey("hf_placeholder_key"))
+        assertTrue(SiliconFlowImageEngine.isPlaceholderKey("MY_NEW_API_KEY_DEFAULT_VALUE"))
+        assertTrue(SiliconFlowImageEngine.isPlaceholderKey("your_api_key_here"))
+        assertTrue(SiliconFlowImageEngine.isPlaceholderKey("placeholder"))
+
+        assertFalse(SiliconFlowImageEngine.isPlaceholderKey("sk-valid1234567890abcdef"))
+        assertFalse(SiliconFlowImageEngine.isPlaceholderKey("custom_secret_key_prod"))
+    }
+
+    @Test
+    fun testResolveConfiguredApiKeyNeverReturnsPlaceholder() {
+        val resolved = SiliconFlowImageEngine.resolveConfiguredApiKey()
+        // If unconfigured or holding a placeholder, it must resolve to empty string instead of dummy string
+        assertFalse(SiliconFlowImageEngine.isPlaceholderKey(resolved) && resolved.isNotEmpty())
     }
 
     @Test
@@ -96,11 +121,11 @@ class AiImageGeneratorEngineTest {
             bitmap = testBitmap,
             usedModel = SiliconFlowModel.FLUX_1_SCHNELL,
             wasFailover = true,
-            imageUrl = "https://de.catbox.moe/abc123.png"
+            imageUrl = "https://files.catbox.moe/abc123.png"
         )
         assertTrue(result.wasFailover)
         assertEquals(SiliconFlowModel.FLUX_1_SCHNELL, result.usedModel)
-        assertEquals("https://de.catbox.moe/abc123.png", result.imageUrl)
+        assertEquals("https://files.catbox.moe/abc123.png", result.imageUrl)
     }
 
     @Test
@@ -115,5 +140,144 @@ class AiImageGeneratorEngineTest {
         assertEquals("text/plain", com.example.util.FileAttachmentActionManager.getMimeType("notes.txt"))
         assertEquals("application/zip", com.example.util.FileAttachmentActionManager.getMimeType("archive.zip"))
         assertEquals("image/jpeg", com.example.util.FileAttachmentActionManager.getMimeType("unknown_file", "IMAGE"))
+    }
+
+    @Test
+    fun testToBypassUrlAndMirrorConversions() {
+        assertEquals(
+            "https://files.catbox.moe/example.png",
+            com.example.util.FileAttachmentActionManager.toBypassUrl("https://de.catbox.moe/example.png")
+        )
+        assertEquals(
+            "https://files.catbox.moe/example.png",
+            com.example.util.FileAttachmentActionManager.toBypassUrl("http://de.catbox.moe/example.png")
+        )
+        assertEquals(
+            "https://files.catbox.moe/doc.pdf",
+            com.example.util.FileAttachmentActionManager.toBypassUrl("http://files.catbox.moe/doc.pdf")
+        )
+        assertEquals(
+            "https://files.catbox.moe/doc.pdf",
+            com.example.util.FileAttachmentActionManager.toBypassUrl("https://files.catbox.moe/doc.pdf")
+        )
+        assertEquals(
+            "https://files.catbox.moe/sample.jpg",
+            CatboxUploadManager.applyBypassMirror("http://files.catbox.moe/sample.jpg")
+        )
+        assertEquals(
+            "https://files.catbox.moe/sample.jpg",
+            CatboxUploadManager.applyBypassMirror("https://de.catbox.moe/sample.jpg")
+        )
+        assertEquals(
+            "https://example.com/other.png",
+            com.example.util.FileAttachmentActionManager.toBypassUrl("https://example.com/other.png")
+        )
+    }
+
+    @Test
+    fun testFileProviderUriGeneration() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val testFile = File(context.cacheDir, "test_download.pdf").apply {
+            writeText("dummy content")
+        }
+        val uri = com.example.util.FileAttachmentActionManager.getFileProviderUri(context, testFile)
+        assertNotNull(uri)
+        assertTrue(uri.scheme == "content" || uri.scheme == "file")
+    }
+
+    @Test
+    fun testCatboxExtractCleanUrl() {
+        // Standard clean HTTPS URL
+        assertEquals(
+            "https://files.catbox.moe/abc123.jpg",
+            CatboxUploadManager.extractCleanUrl("https://files.catbox.moe/abc123.jpg")
+        )
+        // With trailing newlines and carriage return
+        assertEquals(
+            "https://files.catbox.moe/abc123.jpg",
+            CatboxUploadManager.extractCleanUrl("https://files.catbox.moe/abc123.jpg\r\n")
+        )
+        // With quotes
+        assertEquals(
+            "https://files.catbox.moe/abc123.jpg",
+            CatboxUploadManager.extractCleanUrl("\"https://files.catbox.moe/abc123.jpg\"")
+        )
+        // Root domain catbox.moe mapped to files.catbox.moe to prevent 404
+        assertEquals(
+            "https://files.catbox.moe/abc123.jpg",
+            CatboxUploadManager.extractCleanUrl("https://catbox.moe/abc123.jpg")
+        )
+        // Insecure HTTP mapped to secure HTTPS
+        assertEquals(
+            "https://files.catbox.moe/abc123.jpg",
+            CatboxUploadManager.extractCleanUrl("http://files.catbox.moe/abc123.jpg")
+        )
+        // Insecure HTTP on root domain
+        assertEquals(
+            "https://files.catbox.moe/abc123.jpg",
+            CatboxUploadManager.extractCleanUrl("http://catbox.moe/abc123.jpg")
+        )
+        // Mirror domain de.catbox.moe
+        assertEquals(
+            "https://files.catbox.moe/abc123.jpg",
+            CatboxUploadManager.extractCleanUrl("https://de.catbox.moe/abc123.jpg")
+        )
+        // Bare filename/hash returned directly
+        assertEquals(
+            "https://files.catbox.moe/abc123.png",
+            CatboxUploadManager.extractCleanUrl("abc123.png")
+        )
+        // HTML response body wrapper
+        assertEquals(
+            "https://files.catbox.moe/abc123.pdf",
+            CatboxUploadManager.extractCleanUrl("<pre>https://files.catbox.moe/abc123.pdf</pre>")
+        )
+        // Error response returns null
+        assertEquals(
+            null,
+            CatboxUploadManager.extractCleanUrl("Error: File too large")
+        )
+        assertEquals(
+            null,
+            CatboxUploadManager.extractCleanUrl("")
+        )
+    }
+
+    @Test
+    fun testClassifiedDownloadSubdirectories() {
+        assertEquals("DAV InfoExchange", FileAttachmentActionManager.APP_DOWNLOAD_DIR_NAME)
+        assertEquals("Images", FileAttachmentActionManager.CATEGORY_IMAGES)
+        assertEquals("Documents", FileAttachmentActionManager.CATEGORY_DOCUMENTS)
+        assertEquals("Videos", FileAttachmentActionManager.CATEGORY_VIDEOS)
+        assertEquals("Audio", FileAttachmentActionManager.CATEGORY_AUDIO)
+        assertEquals("Other", FileAttachmentActionManager.CATEGORY_OTHER)
+
+        // Images classification
+        assertEquals("Images", FileAttachmentActionManager.classifyFileCategory("science_lab.png", "image/png"))
+        assertEquals("Images", FileAttachmentActionManager.classifyFileCategory("photo.jpg", ""))
+        assertEquals("Images", FileAttachmentActionManager.classifyFileCategory("banner.webp", "image/webp"))
+        assertEquals("Images", FileAttachmentActionManager.classifyFileCategory("animation.gif", ""))
+
+        // Documents classification
+        assertEquals("Documents", FileAttachmentActionManager.classifyFileCategory("syllabus.pdf", "application/pdf"))
+        assertEquals("Documents", FileAttachmentActionManager.classifyFileCategory("assignment.docx", ""))
+        assertEquals("Documents", FileAttachmentActionManager.classifyFileCategory("grades.xlsx", ""))
+        assertEquals("Documents", FileAttachmentActionManager.classifyFileCategory("lecture_notes.txt", "text/plain"))
+        assertEquals("Documents", FileAttachmentActionManager.classifyFileCategory("data.csv", ""))
+
+        // Videos classification
+        assertEquals("Videos", FileAttachmentActionManager.classifyFileCategory("experiment.mp4", "video/mp4"))
+        assertEquals("Videos", FileAttachmentActionManager.classifyFileCategory("annual_day.mkv", ""))
+        assertEquals("Videos", FileAttachmentActionManager.classifyFileCategory("clip.webm", ""))
+
+        // Audio classification
+        assertEquals("Audio", FileAttachmentActionManager.classifyFileCategory("prayer_song.mp3", "audio/mpeg"))
+        assertEquals("Audio", FileAttachmentActionManager.classifyFileCategory("recording.wav", ""))
+        assertEquals("Audio", FileAttachmentActionManager.classifyFileCategory("voice_note.m4a", ""))
+
+        // Other / Archives / Unknown
+        assertEquals("Other", FileAttachmentActionManager.classifyFileCategory("archive.zip", "application/zip"))
+        assertEquals("Other", FileAttachmentActionManager.classifyFileCategory("backup.tar.gz", ""))
+        assertEquals("Other", FileAttachmentActionManager.classifyFileCategory("installer.bin", "application/octet-stream"))
     }
 }

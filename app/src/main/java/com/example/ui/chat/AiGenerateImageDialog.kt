@@ -219,30 +219,30 @@ fun AiGenerateImageDialog(
                         .fillMaxWidth()
                         .padding(bottom = 8.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(if (isKeyActive) Color(0xFFF0FDF4) else Color(0xFFFEF2F2))
-                        .border(1.dp, if (isKeyActive) Color(0xFFBBF7D0) else Color(0xFFFECACA), RoundedCornerShape(8.dp))
+                        .background(if (isKeyActive) Color(0xFFF0FDF4) else Color(0xFFFFFBEB))
+                        .border(1.dp, if (isKeyActive) Color(0xFFBBF7D0) else Color(0xFFFDE68A), RoundedCornerShape(8.dp))
                         .padding(horizontal = 8.dp, vertical = 6.dp)
                 ) {
                     Icon(
                         imageVector = if (isKeyActive) Icons.Default.Shield else Icons.Default.WarningAmber,
                         contentDescription = null,
-                        tint = if (isKeyActive) Color(0xFF15803D) else Color(0xFFDC2626),
+                        tint = if (isKeyActive) Color(0xFF15803D) else Color(0xFFD97706),
                         modifier = Modifier.size(14.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = when {
-                            customApiKey.isNotBlank() -> "Using In-App SiliconFlow Token"
-                            secretsPanelKey.isNotBlank() -> "Using Secrets Panel Token"
-                            else -> "Enter your SiliconFlow API key (sk-...) in settings"
+                            customApiKey.isNotBlank() -> "Using Custom SiliconFlow Override"
+                            secretsPanelKey.isNotBlank() -> "SiliconFlow AI Connected (Universal)"
+                            else -> "Notice: Add SILICONFLOW_API_KEY in AI Studio Secrets"
                         },
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Medium,
-                        color = if (isKeyActive) Color(0xFF166534) else Color(0xFF991B1B)
+                        color = if (isKeyActive) Color(0xFF166534) else Color(0xFF92400E)
                     )
                 }
 
-                // Settings Accordion
+                // Settings Accordion (Advanced Override)
                 AnimatedVisibility(visible = showSettings) {
                     Column(
                         modifier = Modifier
@@ -262,7 +262,7 @@ fun AiGenerateImageDialog(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "SiliconFlow API Key",
+                                text = "Custom API Key (Optional Override)",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = DavTextPrimary
@@ -270,11 +270,11 @@ fun AiGenerateImageDialog(
                         }
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Enter your SiliconFlow API key (starts with sk-). Saved securely on your device.",
+                            text = "Universal SiliconFlow key is active by default. Enter a key here only if you wish to override it.",
                             fontSize = 10.sp,
                             color = DavTextSecondary
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
                         OutlinedTextField(
                             value = customApiKey,
                             onValueChange = {
@@ -283,10 +283,34 @@ fun AiGenerateImageDialog(
                                 sessionManager.setSiliconFlowApiKey(sanitized)
                             },
                             visualTransformation = PasswordVisualTransformation(),
-                            placeholder = { Text(if (secretsPanelKey.isNotBlank()) "●●●●●●●● (Loaded from Secrets Panel)" else "sk-xxxxxxxxxxxxxxxxxxxx", fontSize = 11.sp, color = DavTextMuted) },
+                            placeholder = {
+                                Text(
+                                    text = if (secretsPanelKey.isNotBlank()) "●●●●●●●● (Universal Key Active)" else "sk-xxxxxxxxxxxxxxxxxxxx",
+                                    fontSize = 11.sp,
+                                    color = DavTextMuted
+                                )
+                            },
+                            trailingIcon = {
+                                if (customApiKey.isNotBlank()) {
+                                    IconButton(
+                                        onClick = {
+                                            customApiKey = ""
+                                            sessionManager.setSiliconFlowApiKey("")
+                                        },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = "Clear override",
+                                            tint = DavTextMuted,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                }
+                            },
                             singleLine = true,
                             shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().testTag("custom_api_key_override_input"),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedContainerColor = Color.White,
                                 unfocusedContainerColor = Color.White

@@ -1,51 +1,80 @@
-# Transition to Catbox.moe Storage & SiliconFlow Image Engine
+# Implementation Plan: Universal SiliconFlow Secret Integration
 
-Replace Backblaze B2 entirely with a streamlined keyless **Catbox.moe** upload gateway for all chat file attachments (images, screenshots, diagrams, media blobs), and transition the image generation infrastructure from Hugging Face to **SiliconFlow** (`https://api.siliconflow.cn/v1/images/generations`).
+Configure the SiliconFlow API key universally for all users in the application using the Secrets Gradle Plugin and `BuildConfig`, ensuring the key is hidden from end-users, requiring zero configuration by default, and keeping an optional override in advanced settings.
 
-### User Review & Critical Decisions
+## User Review Required
 
 > [!IMPORTANT]
-> The following architectural decisions were selected based on your direct answers:
-> - **Exclusively Use Catbox.moe**: Remove Backblaze B2 entirely. Route all chat attachments (photos, diagrams, AI artwork, files) directly to `https://catbox.moe/user/api.php` via multipart `reqtype=fileupload` without any auth headers or secret keys.
-> - **200MB File Size & Error Mitigation**: On timeout, 502 Bad Gateway, or size errors, alert the user with the exact message: *"Upload failed. Please ensure the file size is under 200MB."*, while smoothly preserving the local device cache URI to ensure active chat message bubbles render without interruption.
-> - **Prepare SiliconFlow Image Generation**: Remove legacy Hugging Face Inference Router references and implement `SiliconFlowImageEngine` targeting SiliconFlow's high-speed API (`https://api.siliconflow.cn/v1/images/generations`) with `black-forest-labs/FLUX.1-schnell` as the primary diffusion model, ready for your SiliconFlow key.
+> **Secrets Panel Setup**: The app will read `SILICONFLOW_API_KEY` from `BuildConfig`. To enable image generation, please ensure your SiliconFlow API key (`sk-...`) is added under the key name `SILICONFLOW_API_KEY` in the **Secrets panel in AI Studio**.
+
+- **Key Privacy**: The universal secret key is never displayed or rendered in plain text to client users in the UI or written into logcat streams.
+- **Client User Flow**: Normal users will not be prompted to enter an API key; the generate button will work automatically.
+- **Advanced Override**: If advanced users/developers want to use their own personal SiliconFlow key, an optional override field remains accessible inside the dialog settings accordion.
+- **Unset Secret Handling**: If the secret has not yet been supplied in AI Studio Secrets, a friendly administrator notice is displayed guiding them to configure `SILICONFLOW_API_KEY`.
 
 ---
 
-### 1. Proposed Changes
+## Proposed Changes
 
-#### A. Catbox.moe Keyless Upload Manager (`app/src/main/java/com/example/data/CatboxUploadManager.kt`)
-- Create `CatboxUploadManager`:
-  - Target URL: `https://catbox.moe/user/api.php`.
-  - Multipart form-data body:
-    - `"reqtype"` = `"fileupload"`
-    - `"fileToUpload"` = streaming binary RequestBody from content resolver or local file.
-  - No authorization headers or API keys (completely public and keyless).
-  - Parse direct CDN text response (e.g. `https://files.catbox.moe/abc123.png`).
-  - Graceful try/catch handling: On timeout or HTTP 502/error, report:
-    *"Upload failed. Please ensure the file size is under 200MB."*
-  - Fall back smoothly to local file URI if Catbox network fails.
+### Configuration Layer
 
-#### B. Transition Chat Uploads to Catbox (`app/src/main/java/com/example/ui/chat/ConversationThreadSheet.kt`)
-- Replace `B2UploadManager` calls with `CatboxUploadManager.uploadFile()`.
-- Route both user-selected attachments and AI-generated study diagrams through Catbox.moe.
-- Inject the resulting `https://files.catbox.moe/...` CDN URL directly into the `ChatMessage` object for instant rendering in the chat thread.
-
-#### C. Transition AI Engine to SiliconFlow (`app/src/main/java/com/example/ai/SiliconFlowImageEngine.kt` & `AiImageGeneratorEngine.kt`)
-- Implement `SiliconFlowImageEngine` targeting `https://api.siliconflow.cn/v1/images/generations`.
-- Default model: `black-forest-labs/FLUX.1-schnell` (with fallback to `stabilityai/stable-diffusion-3-medium`).
-- Provide clean token handling in dialog settings for your SiliconFlow API key (`sk-...`).
-- Update `AiGenerateImageDialog.kt` to reflect SiliconFlow as the active AI engine.
-
-#### D. Unit Test Verification (`app/src/test/java/com/example/CatboxAndSiliconFlowTest.kt`)
-- Add unit test verifying Catbox.moe upload request formatting (`reqtype=fileupload`, `fileToUpload`).
-- Add unit test verifying 200MB error message text formatting.
+#### [`.env.example`](file:///.env.example)
+- Add `SILICONFLOW_API_KEY=sk_placeholder_key` to `.env.example`.
+- This informs the Secrets Gradle Plugin to generate `BuildConfig.SILICONFLOW_API_KEY` and allows AI Studio's Secrets panel to detect and inject the secret at build/run time.
 
 ---
 
-### 2. Verification Plan
+### AI Engine Layer
 
-1. **Local JVM Tests**:
-   - Run `gradle :app:testDebugUnitTest` to verify Catbox and SiliconFlow logic.
-2. **Applet Compilation**:
-   - Run `compile_applet` to confirm clean compilation with zero build errors.
+#### [`app/src/main/java/com/example/ai/SiliconFlowImageEngine.kt`](file:///app/src/main/java/com/example/ai/SiliconFlowImageEngine.kt)
+- Update `resolveConfiguredApiKey()`:
+  - Access `BuildConfig.SILICONFLOW_API_KEY` directly and safely via reflection/`BuildConfig`.
+  - Treat default placeholder values (`sk_placeholder_key`, `MY_NEW_API_KEY_DEFAULT_VALUE`, empty strings) as unconfigured.
+  - Support fallback to existing `HUGGINGFACE_API_KEY` if user previously saved their `sk-` token under that variable.
+- Ensure sanitization removes any leading `Bearer `, whitespace, and surrounding quotes.
+- Guarantee that error logs and exception messages never print the raw API key token.
+
+---
+
+### UI & Presentation Layer
+
+#### [`app/src/main/java/com/example/ui/chat/AiGenerateImageDialog.kt`](file:///app/src/main/java/com/example/ui/chat/AiGenerateImageDialog.kt)
+- **Status Indicator**:
+  - When universal secret (or custom key) is active: display a subtle, reassuring badge: "SiliconFlow AI Ready" with a green shield/sparkle icon. No key text is displayed.
+  - When no key is active: display a friendly notice banner: "SiliconFlow secret not configured. Please add SILICONFLOW_API_KEY in the AI Studio Secrets panel."
+- **Settings Accordion (Advanced)**:
+  - Retain the gear icon in the title bar for advanced options.
+  - Change the API key input title to "Custom API Key (Optional Override)".
+  - Add explanatory helper text: "The app uses the universal SiliconFlow secret key by default. You only need to enter a custom key if you wish to override it."
+  - Mask the input using `PasswordVisualTransformation()` and placeholder text `●●●●●●●● (Universal Key Active)`.
+- **Primary Action**:
+  - The "Generate" button is enabled whenever prompt text is entered.
+  - If triggered without a configured key, show a concise error message pointing to the AI Studio Secrets panel without exposing internal stack traces.
+
+---
+
+### Testing Layer
+
+#### [`app/src/test/java/com/example/AiImageGeneratorEngineTest.kt`](file:///app/src/test/java/com/example/AiImageGeneratorEngineTest.kt)
+- Add unit tests for:
+  - `testUniversalApiKeyResolution`: Verifies placeholder recognition, trimming, and sanitization.
+  - `testCustomApiKeyOverride`: Verifies that a user-specified custom key takes precedence over the universal default key.
+  - `testApiKeyMaskingAndSanitization`: Verifies that `sanitizeApiKey` cleans prefix `Bearer `, quotes, and whitespace.
+
+---
+
+## Verification Plan
+
+### Automated Tests
+- Run Gradle unit tests locally via `run_command`:
+  ```bash
+  gradle :app:testDebugUnitTest
+  ```
+- Verify compilation and linting via:
+  - `compile_applet`
+
+### Manual Verification Steps
+1. Open the AI Image Generator dialog in the chat interface.
+2. Confirm the UI does not prompt for an API key by default and shows the clean status badge.
+3. Open the Advanced Settings accordion to verify the optional override field with masked text.
+4. Verify that missing key shows the friendly administrator notice instead of crashing or leaking raw tokens.
