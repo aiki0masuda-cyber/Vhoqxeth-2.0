@@ -21,9 +21,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Cached
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.Info
@@ -408,8 +408,8 @@ fun SettingsTabContent(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Default.AutoAwesome,
-                            contentDescription = "AI Guardian",
+                            imageVector = Icons.Default.Security,
+                            contentDescription = "System Guardian",
                             tint = VhoqxethOnlineGreen,
                             modifier = Modifier.size(20.dp)
                         )
@@ -417,7 +417,7 @@ fun SettingsTabContent(
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Autonomous AI Self-Healing",
+                            text = "Autonomous System Self-Healing",
                             color = VhoqxethTextPrimary,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Medium

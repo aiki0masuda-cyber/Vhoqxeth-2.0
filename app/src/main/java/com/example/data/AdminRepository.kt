@@ -328,4 +328,97 @@ class AdminRepository(
             Result.failure(e)
         }
     }
+
+    /**
+     * Performs a complete factory reset of the database:
+     * - Deletes all messages in every thread
+     * - Deletes all thread documents
+     * - Deletes all user documents and their subcollections
+     * - Deletes all registered IP entries
+     * - Re-seeds the system with a default administrator profile and fresh General Campus channel
+     */
+    suspend fun factoryResetDatabase(): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            var messagesCount = 0
+            var threadsCount = 0
+            var usersCount = 0
+            var ipsCount = 0
+
+            // 1. Delete all messages within all threads and thread documents
+            val threadsSnapshot = db.collection("threads").get().await()
+            for (threadDoc in threadsSnapshot.documents) {
+                val messagesSnapshot = threadDoc.reference.collection("messages").get().await()
+                for (msgDoc in messagesSnapshot.documents) {
+                    msgDoc.reference.delete().await()
+                    messagesCount++
+                }
+                threadDoc.reference.delete().await()
+                threadsCount++
+            }
+
+            // 2. Clear all custom users and their contacts
+            val usersSnapshot = db.collection("users").get().await()
+            for (userDoc in usersSnapshot.documents) {
+                val contacts = userDoc.reference.collection("contacts").get().await()
+                for (contact in contacts.documents) {
+                    contact.reference.delete().await()
+                }
+                userDoc.reference.delete().await()
+                usersCount++
+            }
+
+            // 3. Clear registered IPs
+            val ipsSnapshot = db.collection("registered_ips").get().await()
+            for (ipDoc in ipsSnapshot.documents) {
+                ipDoc.reference.delete().await()
+                ipsCount++
+            }
+
+            // 4. Re-seed default essential channels & admin profile
+            val now = getCurrentIsoTimestamp()
+            val defaultAdmin = mapOf(
+                "userId" to "admin",
+                "customUserId" to "admin",
+                "displayName" to "System Administrator",
+                "role" to UserProfile.ROLE_TEACHER,
+                "designation" to "Campus Administrator",
+                "department" to "Administration",
+                "createdAt" to now,
+                "currentIp" to "127.0.0.1",
+                "associatedIps" to listOf("127.0.0.1")
+            )
+            db.collection("users").document("admin").set(defaultAdmin).await()
+
+            val defaultThread = mapOf(
+                "threadId" to "thread_general_campus",
+                "title" to "General Campus",
+                "description" to "Universal campus announcements & open discussions",
+                "category" to "CAMPUS",
+                "createdAt" to now,
+                "lastActivity" to now,
+                "lastMessageSnippet" to "System initialized fresh database.",
+                "unreadCount" to 0,
+                "isPinned" to true,
+                "participantCount" to 1
+            )
+            db.collection("threads").document("thread_general_campus").set(defaultThread).await()
+
+            val welcomeMsg = mapOf(
+                "messageId" to "msg_welcome_init",
+                "threadId" to "thread_general_campus",
+                "senderId" to "admin",
+                "senderName" to "System Administrator",
+                "senderRole" to "TEACHER",
+                "content" to "Welcome to the refreshed campus platform. Database has been reset to factory defaults.",
+                "timestamp" to now
+            )
+            db.collection("threads").document("thread_general_campus")
+                .collection("messages").document("msg_welcome_init").set(welcomeMsg).await()
+
+            Result.success("Factory reset complete. Cleared $messagesCount messages, $threadsCount threads, $usersCount users, and $ipsCount IPs.")
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to perform factory reset: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
 }

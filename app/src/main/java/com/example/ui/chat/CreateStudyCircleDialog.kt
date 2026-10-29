@@ -21,7 +21,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.GroupAdd
@@ -37,7 +36,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
-import com.example.ai.AiImageGeneratorEngine
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -92,7 +90,6 @@ fun CreateStudyCircleDialog(
     var description by remember { mutableStateOf("") }
     var manualHandleInput by remember { mutableStateOf("") }
     var customAvatarUri by remember { mutableStateOf<String?>(null) }
-    var showAiAvatarDialog by remember { mutableStateOf(false) }
 
     val selectedContacts = remember(initialPreselectedContact) {
         mutableStateListOf<String>().apply {
@@ -215,7 +212,7 @@ fun CreateStudyCircleDialog(
                     )
                 )
 
-                // Group Avatar with AI Generator
+                // Group Avatar / Emblem
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -254,37 +251,15 @@ fun CreateStudyCircleDialog(
 
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = if (customAvatarUri != null) "AI Avatar Set" else "Group Emblem / Avatar",
+                            text = "Group Emblem",
                             color = DavTextPrimary,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = if (customAvatarUri != null) "Custom AI emblem created" else "Generate with Hugging Face AI",
+                            text = "Universal campus circle crest",
                             color = DavTextMuted,
                             fontSize = 10.sp
-                        )
-                    }
-
-                    Button(
-                        onClick = { showAiAvatarDialog = true },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = DavBrandRoyalBlue.copy(alpha = 0.1f),
-                            contentColor = DavBrandRoyalBlue
-                        ),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.testTag("circle_generate_avatar_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.AutoAwesome,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = if (customAvatarUri != null) "Change" else "AI Avatar",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
                         )
                     }
                 }
@@ -567,27 +542,4 @@ fun CreateStudyCircleDialog(
             }
         }
     )
-
-    if (showAiAvatarDialog) {
-        val suggestedPrompt = if (groupName.isNotBlank()) {
-            "Academic emblem crest for \"${groupName.trim()}\" ${if (subject.isNotBlank()) "focusing on $subject" else ""}, featuring Vedic lamp of learning and knowledge shield, clean educational vector crest"
-        } else {
-            "Prestigious scholastic crest emblem with knowledge torch, open textbook and laurel wreath, clean vector emblem"
-        }
-
-        AiGenerateImageDialog(
-            initialPrompt = suggestedPrompt,
-            title = "Generate Group Avatar Crest",
-            confirmButtonLabel = "Use as Group Avatar",
-            onDismiss = { showAiAvatarDialog = false },
-            onImageAccepted = { bitmap, _ ->
-                val uri = AiImageGeneratorEngine.saveBitmapToLocalCache(
-                    context = context,
-                    bitmap = bitmap,
-                    prefix = "new_group_avatar"
-                )
-                customAvatarUri = uri.toString()
-            }
-        )
-    }
 }

@@ -39,7 +39,6 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FolderZip
 import androidx.compose.material.icons.filled.Groups
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
@@ -88,10 +87,18 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.runtime.DisposableEffect
 import coil.compose.AsyncImage
-import com.example.ai.AiImageGeneratorEngine
-import com.example.ai.SiliconFlowImageEngine
-import com.example.ai.SiliconFlowModel
+import com.example.util.AudioVoiceManager
 import com.example.data.CatboxUploadManager
 import com.example.data.MeshChatRepository
 import com.example.data.SessionManager
@@ -137,9 +144,33 @@ fun ConversationThreadSheet(
     var pendingAttachment by remember { mutableStateOf<SelectedFileAttachment?>(null) }
     var isSending by remember { mutableStateOf(false) }
     var showAddMemberDialog by remember { mutableStateOf(false) }
-    var showAiImageDialog by remember { mutableStateOf(false) }
     var showGroupInfoSheet by remember { mutableStateOf(false) }
     var showCloudflareWorkerSettings by remember { mutableStateOf(false) }
+
+    // Audio Voice Recording & Playback Manager
+    val audioVoiceManager = remember { AudioVoiceManager(context) }
+    DisposableEffect(Unit) {
+        onDispose {
+            audioVoiceManager.release()
+        }
+    }
+    val isRecordingVoice by audioVoiceManager.isRecording.collectAsState()
+    val recordingDurationSec by audioVoiceManager.recordingDurationSeconds.collectAsState()
+    val currentlyPlayingVoiceId by audioVoiceManager.currentlyPlayingId.collectAsState()
+    val voicePlaybackProgress by audioVoiceManager.playbackProgress.collectAsState()
+
+    val audioPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            val started = audioVoiceManager.startRecording()
+            if (!started) {
+                Toast.makeText(context, "Could not start audio recorder", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            Toast.makeText(context, "Microphone permission is required to send voice messages", Toast.LENGTH_LONG).show()
+        }
+    }
 
     // Live thread stream from Firestore
     val liveThreadState by chatRepository.observeThread(thread.id).collectAsState(initial = thread)
@@ -529,7 +560,15 @@ fun ConversationThreadSheet(
                     MessageBubble(
                         message = msg,
                         isMe = isMe,
-                        context = context
+                        context = context,
+                        isPlayingVoice = currentlyPlayingVoiceId == msg.messageId,
+                        playbackProgress = if (currentlyPlayingVoiceId == msg.messageId) voicePlaybackProgress else 0f,
+                        onTogglePlayVoice = {
+                            val audioUrl = (msg.resolvedAttachmentUrl?.ifBlank { null } ?: msg.attachmentUri ?: "").let {
+                                CatboxUploadManager.applyBypassMirror(it)
+                            }
+                            audioVoiceManager.togglePlay(msg.messageId, audioUrl)
+                        }
                     )
                 }
             }
@@ -621,6 +660,140 @@ fun ConversationThreadSheet(
                     )
                 }
             }
+        } else if (isRecordingVoice) {
+            // Active Voice Note Recording Bar
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.White)
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFFEE2E2)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Mic,
+                        contentDescription = "Recording",
+                        tint = Color(0xFFDC2626),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Recording Voice Note...",
+                        color = Color(0xFFDC2626),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = AudioVoiceManager.formatDuration(recordingDurationSec),
+                        color = DavTextPrimary,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                // Cancel Recording Button
+                IconButton(
+                    onClick = {
+                        audioVoiceManager.cancelRecording()
+                    },
+                    modifier = Modifier
+                        .size(38.dp)
+                        .testTag("cancel_voice_record_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Cancel Recording",
+                        tint = Color(0xFF94A3B8),
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(6.dp))
+
+                // Finish & Send Voice Message Button
+                IconButton(
+                    onClick = {
+                        val result = audioVoiceManager.stopRecording()
+                        if (result != null) {
+                            val (file, duration) = result
+                            val tempId = "voice_${System.currentTimeMillis()}"
+                            val durationLabel = AudioVoiceManager.formatDuration(duration)
+                            val voiceUri = Uri.fromFile(file)
+
+                            val placeholder = ChatMessage(
+                                messageId = tempId,
+                                threadId = currentThread.id,
+                                senderId = currentHandle,
+                                senderName = currentUser.displayName,
+                                content = "",
+                                timestamp = "Uploading...",
+                                attachmentUri = voiceUri.toString(),
+                                attachmentName = file.name,
+                                attachmentType = "VOICE",
+                                attachmentSize = durationLabel,
+                                voiceDurationSeconds = duration,
+                                isUploadingPlaceholder = true,
+                                uploadProgress = 0f
+                            )
+                            pendingUploads.add(placeholder)
+
+                            coroutineScope.launch {
+                                val uploadRes = catboxUploadManager.uploadFile(
+                                    contentResolver = context.contentResolver,
+                                    fileUri = voiceUri,
+                                    filename = file.name,
+                                    contentType = "audio/mp4",
+                                    onProgress = { progress ->
+                                        val idx = pendingUploads.indexOfFirst { it.messageId == tempId }
+                                        if (idx != -1) {
+                                            pendingUploads[idx] = pendingUploads[idx].copy(uploadProgress = progress)
+                                        }
+                                    }
+                                )
+
+                                val cleanDownloadUrl = CatboxUploadManager.extractCleanUrl(uploadRes.url) ?: uploadRes.url
+                                if (cleanDownloadUrl.isNotBlank() && cleanDownloadUrl.startsWith("https://")) {
+                                    chatRepository.sendVoiceMessage(
+                                        threadId = currentThread.id,
+                                        senderProfile = currentUser,
+                                        audioUrl = cleanDownloadUrl,
+                                        durationSeconds = duration
+                                    )
+                                } else {
+                                    val errorAlert = uploadRes.errorMessage ?: "Failed to upload voice message."
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(context, errorAlert, Toast.LENGTH_LONG).show()
+                                    }
+                                }
+
+                                pendingUploads.removeAll { it.messageId == tempId }
+                            }
+                        }
+                    },
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(CircleShape)
+                        .background(DavBrandRoyalBlue)
+                        .testTag("send_voice_record_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Send,
+                        contentDescription = "Send Voice Message",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
         } else {
             // Bottom Message & Attachment Composer
             Row(
@@ -646,25 +819,6 @@ fun ConversationThreadSheet(
                         contentDescription = "Attach File / Document",
                         tint = DavBrandRoyalBlue,
                         modifier = Modifier.size(22.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(6.dp))
-
-                // AI Image Generation Sparkle Button
-                IconButton(
-                    onClick = { showAiImageDialog = true },
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(DavAccentSky.copy(alpha = 0.15f))
-                        .testTag("ai_image_sparkle_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.AutoAwesome,
-                        contentDescription = "Generate Study Diagram with AI",
-                        tint = DavBrandRoyalBlue,
-                        modifier = Modifier.size(20.dp)
                     )
                 }
 
@@ -698,141 +852,77 @@ fun ConversationThreadSheet(
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                val canSend = (inputMessage.trim().isNotBlank() || pendingAttachment != null) && !isSending
+                val hasContentToSend = inputMessage.trim().isNotBlank() || pendingAttachment != null
 
-                IconButton(
-                    onClick = {
-                        if (canSend) {
-                            val text = inputMessage.trim()
-                            val att = pendingAttachment
-                            inputMessage = ""
-                            pendingAttachment = null
+                if (hasContentToSend) {
+                    // Send text or file button
+                    IconButton(
+                        onClick = {
+                            if (!isSending) {
+                                val text = inputMessage.trim()
+                                val att = pendingAttachment
+                                inputMessage = ""
+                                pendingAttachment = null
 
-                            if (att != null) {
-                                val tempId = "upload_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}"
-                                val placeholder = ChatMessage(
-                                    messageId = tempId,
-                                    threadId = currentThread.id,
-                                    senderId = currentHandle,
-                                    senderName = currentUser.displayName,
-                                    content = text,
-                                    timestamp = "Uploading...",
-                                    attachmentUri = att.uri.toString(),
-                                    attachmentName = att.name,
-                                    attachmentType = att.type,
-                                    attachmentSize = att.size,
-                                    isUploadingPlaceholder = true,
-                                    uploadProgress = 0f
-                                )
-                                pendingUploads.add(placeholder)
-
-                                coroutineScope.launch {
-                                    val uploadRes = catboxUploadManager.uploadFile(
-                                        contentResolver = context.contentResolver,
-                                        fileUri = att.uri,
-                                        filename = att.name,
-                                        contentType = when (att.type) {
-                                            "IMAGE" -> "image/jpeg"
-                                            "VIDEO" -> "video/mp4"
-                                            "PDF" -> "application/pdf"
-                                            else -> "application/octet-stream"
-                                        },
-                                        onProgress = { progress ->
-                                            uploadStates[tempId] = UploadState.Uploading(progress)
-                                            val idx = pendingUploads.indexOfFirst { it.messageId == tempId }
-                                            if (idx != -1) {
-                                                pendingUploads[idx] = pendingUploads[idx].copy(uploadProgress = progress)
-                                            }
-                                        }
+                                if (att != null) {
+                                    val tempId = "upload_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}"
+                                    val placeholder = ChatMessage(
+                                        messageId = tempId,
+                                        threadId = currentThread.id,
+                                        senderId = currentHandle,
+                                        senderName = currentUser.displayName,
+                                        content = text,
+                                        timestamp = "Uploading...",
+                                        attachmentUri = att.uri.toString(),
+                                        attachmentName = att.name,
+                                        attachmentType = att.type,
+                                        attachmentSize = att.size,
+                                        isUploadingPlaceholder = true,
+                                        uploadProgress = 0f
                                     )
+                                    pendingUploads.add(placeholder)
 
-                                    val cleanDownloadUrl = CatboxUploadManager.extractCleanUrl(uploadRes.url) ?: uploadRes.url
-                                    if (cleanDownloadUrl.isNotBlank() && cleanDownloadUrl.startsWith("https://")) {
-                                        chatRepository.sendFileMessage(
-                                            threadId = currentThread.id,
-                                            senderProfile = currentUser,
-                                            content = text,
-                                            attachmentUri = cleanDownloadUrl,
-                                            attachmentName = att.name,
-                                            attachmentType = att.type,
-                                            attachmentSize = att.size,
-                                            attachmentKey = null
-                                        )
-                                    } else {
-                                        val errorAlert = uploadRes.errorMessage ?: "Upload failed. Please ensure file is under 200MB."
-                                        withContext(Dispatchers.Main) {
-                                            Toast.makeText(context, errorAlert, Toast.LENGTH_LONG).show()
-                                        }
-                                    }
-
-                                    pendingUploads.removeAll { it.messageId == tempId }
-                                    uploadStates.remove(tempId)
-                                }
-                            } else {
-                                val imageCommandPrompt = SiliconFlowImageEngine.extractImageCommandPrompt(text)
-                                if (imageCommandPrompt != null) {
-                                    // User typed /imagine, /draw, /image, or natural language generation request
-                                    isSending = true
                                     coroutineScope.launch {
-                                        try {
-                                            Toast.makeText(
-                                                context,
-                                                "🎨 Synthesizing illustration: \"$imageCommandPrompt\" with SiliconFlow FLUX.1 Schnell...",
-                                                Toast.LENGTH_LONG
-                                            ).show()
-
-                                            val result = AiImageGeneratorEngine.generateImage(
-                                                prompt = imageCommandPrompt,
-                                                model = SiliconFlowModel.FLUX_1_SCHNELL
-                                            )
-
-                                            if (result.isSuccess) {
-                                                val bitmap = result.getOrNull()!!
-                                                val cachedUri = AiImageGeneratorEngine.saveBitmapToLocalCache(
-                                                    context = context,
-                                                    bitmap = bitmap,
-                                                    prefix = "chat_ai_${currentThread.id}"
-                                                )
-                                                val attName = "illustration_${System.currentTimeMillis()}.png"
-
-                                                val uploadRes = catboxUploadManager.uploadFile(
-                                                    contentResolver = context.contentResolver,
-                                                    fileUri = cachedUri,
-                                                    filename = attName,
-                                                    contentType = "image/png"
-                                                )
-
-                                                val cleanDownloadUrl = CatboxUploadManager.extractCleanUrl(uploadRes.url) ?: uploadRes.url
-                                                if (cleanDownloadUrl.isNotBlank() && cleanDownloadUrl.startsWith("https://")) {
-                                                    chatRepository.sendFileMessage(
-                                                        threadId = currentThread.id,
-                                                        senderProfile = currentUser,
-                                                        content = "🎨 Prompt: \"$imageCommandPrompt\"",
-                                                        attachmentUri = cleanDownloadUrl,
-                                                        attachmentName = attName,
-                                                        attachmentType = "IMAGE",
-                                                        attachmentSize = "AI Generated PNG",
-                                                        attachmentKey = null
-                                                    )
-                                                } else {
-                                                    val errorAlert = uploadRes.errorMessage ?: "Upload failed."
-                                                    withContext(Dispatchers.Main) {
-                                                        Toast.makeText(context, errorAlert, Toast.LENGTH_LONG).show()
-                                                    }
+                                        val uploadRes = catboxUploadManager.uploadFile(
+                                            contentResolver = context.contentResolver,
+                                            fileUri = att.uri,
+                                            filename = att.name,
+                                            contentType = when (att.type) {
+                                                "IMAGE" -> "image/jpeg"
+                                                "VIDEO" -> "video/mp4"
+                                                "PDF" -> "application/pdf"
+                                                else -> "application/octet-stream"
+                                            },
+                                            onProgress = { progress ->
+                                                uploadStates[tempId] = UploadState.Uploading(progress)
+                                                val idx = pendingUploads.indexOfFirst { it.messageId == tempId }
+                                                if (idx != -1) {
+                                                    pendingUploads[idx] = pendingUploads[idx].copy(uploadProgress = progress)
                                                 }
-                                            } else {
-                                                val ex = result.exceptionOrNull()
-                                                val errMsg = ex?.localizedMessage ?: "Failed to generate image."
-                                                Toast.makeText(context, errMsg, Toast.LENGTH_LONG).show()
-                                                chatRepository.sendMessage(
-                                                    currentThread.id,
-                                                    currentUser,
-                                                    "⚠️ [Image Generation]: $errMsg"
-                                                )
                                             }
-                                        } finally {
-                                            isSending = false
+                                        )
+
+                                        val cleanDownloadUrl = CatboxUploadManager.extractCleanUrl(uploadRes.url) ?: uploadRes.url
+                                        if (cleanDownloadUrl.isNotBlank() && cleanDownloadUrl.startsWith("https://")) {
+                                            chatRepository.sendFileMessage(
+                                                threadId = currentThread.id,
+                                                senderProfile = currentUser,
+                                                content = text,
+                                                attachmentUri = cleanDownloadUrl,
+                                                attachmentName = att.name,
+                                                attachmentType = att.type,
+                                                attachmentSize = att.size,
+                                                attachmentKey = null
+                                            )
+                                        } else {
+                                            val errorAlert = uploadRes.errorMessage ?: "Upload failed. Please ensure file is under 200MB."
+                                            withContext(Dispatchers.Main) {
+                                                Toast.makeText(context, errorAlert, Toast.LENGTH_LONG).show()
+                                            }
                                         }
+
+                                        pendingUploads.removeAll { it.messageId == tempId }
+                                        uploadStates.remove(tempId)
                                     }
                                 } else {
                                     isSending = true
@@ -842,29 +932,58 @@ fun ConversationThreadSheet(
                                     }
                                 }
                             }
+                        },
+                        enabled = !isSending,
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(CircleShape)
+                            .background(DavBrandRoyalBlue)
+                            .testTag("send_message_button")
+                    ) {
+                        if (isSending) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                color = Color.White,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Send,
+                                contentDescription = "Send Message",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
-                    },
-                    enabled = canSend,
-                    modifier = Modifier
-                        .size(46.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (canSend) DavBrandRoyalBlue else Color(0xFFE2E8F0)
-                        )
-                        .testTag("send_message_button")
-                ) {
-                    if (isSending) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            color = Color.White,
-                            strokeWidth = 2.dp
-                        )
-                    } else {
+                    }
+                } else {
+                    // Voice Record Trigger Button (when text input is empty)
+                    IconButton(
+                        onClick = {
+                            val hasMicPermission = ContextCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.RECORD_AUDIO
+                            ) == PackageManager.PERMISSION_GRANTED
+
+                            if (hasMicPermission) {
+                                val started = audioVoiceManager.startRecording()
+                                if (!started) {
+                                    Toast.makeText(context, "Could not start audio recorder", Toast.LENGTH_SHORT).show()
+                                }
+                            } else {
+                                audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                            }
+                        },
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(CircleShape)
+                            .background(DavBrandRoyalBlue)
+                            .testTag("voice_message_record_button")
+                    ) {
                         Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Send,
-                            contentDescription = "Send Message",
-                            tint = if (canSend) Color.White else Color(0xFF94A3B8),
-                            modifier = Modifier.size(20.dp)
+                            imageVector = Icons.Default.Mic,
+                            contentDescription = "Record Voice Message",
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp)
                         )
                     }
                 }
@@ -881,82 +1000,6 @@ fun ConversationThreadSheet(
             onDismiss = { showAddMemberDialog = false },
             onMemberAdded = {
                 // Member added successfully
-            }
-        )
-    }
-
-    // Modal: AI Study Illustration Generator
-    if (showAiImageDialog) {
-        val suggestedPrompt = if (currentThread.isGroup && currentThread.subject.isNotBlank()) {
-            "Educational concept illustration explaining ${currentThread.subject}"
-        } else ""
-
-        AiGenerateImageDialog(
-            initialPrompt = suggestedPrompt,
-            title = "Generate Study Diagram with AI",
-            confirmButtonLabel = "Send into Chat",
-            onDismiss = { showAiImageDialog = false },
-            onImageAccepted = { bitmap, prompt ->
-                val cachedUri = AiImageGeneratorEngine.saveBitmapToLocalCache(
-                    context = context,
-                    bitmap = bitmap,
-                    prefix = "chat_ai_${currentThread.id}"
-                )
-                val tempId = "ai_upload_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}"
-                val attName = "AI_${prompt.take(20).replace(" ", "_").replace(Regex("[^a-zA-Z0-9_]"), "")}.png"
-                val placeholder = ChatMessage(
-                    messageId = tempId,
-                    threadId = currentThread.id,
-                    senderId = currentHandle,
-                    senderName = currentUser.displayName,
-                    content = prompt,
-                    timestamp = "Uploading...",
-                    attachmentUri = cachedUri.toString(),
-                    attachmentName = attName,
-                    attachmentType = "IMAGE",
-                    attachmentSize = "AI Generated PNG",
-                    isUploadingPlaceholder = true,
-                    uploadProgress = 0f
-                )
-                pendingUploads.add(placeholder)
-
-                coroutineScope.launch {
-                    val uploadRes = catboxUploadManager.uploadFile(
-                        contentResolver = context.contentResolver,
-                        fileUri = cachedUri,
-                        filename = attName,
-                        contentType = "image/png",
-                        onProgress = { progress ->
-                            uploadStates[tempId] = UploadState.Uploading(progress)
-                            val idx = pendingUploads.indexOfFirst { it.messageId == tempId }
-                            if (idx != -1) {
-                                pendingUploads[idx] = pendingUploads[idx].copy(uploadProgress = progress)
-                            }
-                        }
-                    )
-
-                    val cleanDownloadUrl = CatboxUploadManager.extractCleanUrl(uploadRes.url) ?: uploadRes.url
-                    if (cleanDownloadUrl.isNotBlank() && cleanDownloadUrl.startsWith("https://")) {
-                        chatRepository.sendFileMessage(
-                            threadId = currentThread.id,
-                            senderProfile = currentUser,
-                            content = prompt,
-                            attachmentUri = cleanDownloadUrl,
-                            attachmentName = attName,
-                            attachmentType = "IMAGE",
-                            attachmentSize = "AI Generated PNG",
-                            attachmentKey = null
-                        )
-                    } else {
-                        val errorAlert = uploadRes.errorMessage ?: "Upload failed."
-                        withContext(Dispatchers.Main) {
-                            Toast.makeText(context, errorAlert, Toast.LENGTH_LONG).show()
-                        }
-                    }
-
-                    pendingUploads.removeAll { it.messageId == tempId }
-                    uploadStates.remove(tempId)
-                }
             }
         )
     }
@@ -997,7 +1040,10 @@ fun ConversationThreadSheet(
 private fun MessageBubble(
     message: ChatMessage,
     isMe: Boolean,
-    context: Context
+    context: Context,
+    isPlayingVoice: Boolean = false,
+    playbackProgress: Float = 0f,
+    onTogglePlayVoice: () -> Unit = {}
 ) {
     val bubbleColor = if (isMe) DavBrandRoyalBlue else Color.White
     val textColor = if (isMe) Color.White else DavTextPrimary
@@ -1072,8 +1118,81 @@ private fun MessageBubble(
                 .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                // If message contains a file attachment
-                if (message.hasAttachment) {
+                // If message is a dedicated Voice Note
+                if (message.isVoiceMessage) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (isMe) Color.White.copy(alpha = 0.2f) else DavSurfaceElevated)
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = onTogglePlayVoice,
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(if (isMe) Color.White else DavBrandRoyalBlue)
+                                .testTag("toggle_voice_play_button")
+                        ) {
+                            Icon(
+                                imageVector = if (isPlayingVoice) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = if (isPlayingVoice) "Pause Voice Note" else "Play Voice Note",
+                                tint = if (isMe) DavBrandRoyalBlue else Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(10.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            LinearProgressIndicator(
+                                progress = { if (isPlayingVoice) playbackProgress else 0f },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(4.dp)
+                                    .clip(RoundedCornerShape(2.dp)),
+                                color = if (isMe) Color.White else DavBrandRoyalBlue,
+                                trackColor = if (isMe) Color.White.copy(alpha = 0.3f) else DavBorder
+                            )
+
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = if (message.voiceDurationSeconds > 0) {
+                                        AudioVoiceManager.formatDuration(message.voiceDurationSeconds)
+                                    } else {
+                                        message.attachmentSize?.ifBlank { "Voice Note" } ?: "Voice Note"
+                                    },
+                                    color = if (isMe) Color.White.copy(alpha = 0.9f) else DavTextSecondary,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Mic,
+                                        contentDescription = null,
+                                        tint = if (isMe) Color.White.copy(alpha = 0.7f) else DavBrandRoyalBlue,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Text(
+                                        text = "Voice",
+                                        color = if (isMe) Color.White.copy(alpha = 0.7f) else DavTextMuted,
+                                        fontSize = 10.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else if (message.hasAttachment) {
                     val attName = message.attachmentName ?: "Attached File"
                     val attType = message.attachmentType ?: "FILE"
                     val attSize = message.attachmentSize ?: ""
@@ -1267,6 +1386,7 @@ private fun getAttachmentIcon(type: String): ImageVector {
         "DOC" -> Icons.Default.Description
         "SHEET" -> Icons.Default.TableChart
         "ARCHIVE" -> Icons.Default.FolderZip
+        "VOICE", "AUDIO" -> Icons.Default.GraphicEq
         else -> Icons.Default.Description
     }
 }

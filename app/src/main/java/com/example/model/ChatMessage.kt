@@ -21,10 +21,16 @@ data class ChatMessage(
     val attachmentType: String? = null,       // "IMAGE", "PDF", "VIDEO", "DOC", "FILE"
     val attachmentSize: String? = null,
     val isUploadingPlaceholder: Boolean = false, // True while streaming binary to pre-signed URL
-    val uploadProgress: Float = 0f            // 0.0f to 1.0f progress for active placeholder
+    val uploadProgress: Float = 0f,           // 0.0f to 1.0f progress for active placeholder
+    val voiceDurationSeconds: Int = 0         // Duration in seconds if audio voice message
 ) {
     val isFaculty: Boolean
         get() = senderRole.equals("TEACHER", ignoreCase = true)
+
+    val isVoiceMessage: Boolean
+        get() = attachmentType.equals("VOICE", ignoreCase = true) ||
+                (attachmentName?.endsWith(".m4a", ignoreCase = true) == true) ||
+                (attachmentName?.endsWith(".aac", ignoreCase = true) == true)
 
     val resolvedAttachmentUrl: String?
         get() = temporaryDownloadUrl?.ifBlank { null }

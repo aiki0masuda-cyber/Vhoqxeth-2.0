@@ -551,6 +551,81 @@ class MeshChatRepository(
     }
 
     /**
+     * Dispatches a recorded voice audio message to the thread.
+     */
+    suspend fun sendVoiceMessage(
+        threadId: String,
+        senderProfile: UserProfile,
+        audioUrl: String,
+        durationSeconds: Int
+    ): Result<ChatMessage> = withContext(Dispatchers.IO) {
+        try {
+            val now = getCurrentIsoTimestamp()
+            val senderHandle = senderProfile.customUserId.trim().removePrefix("@").lowercase()
+            val messageId = "msg_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}"
+            val minutes = durationSeconds / 60
+            val seconds = durationSeconds % 60
+            val durationLabel = String.format("%02d:%02d", minutes, seconds)
+            val displaySnippet = "🎤 Voice message ($durationLabel)"
+
+            val cleanDownloadUrl = CatboxUploadManager.extractCleanUrl(audioUrl) ?: audioUrl.trim()
+
+            val msgPayload = mapOf<String, Any?>(
+                "messageId" to messageId,
+                "threadId" to threadId,
+                "senderId" to senderHandle,
+                "senderName" to senderProfile.displayName,
+                "senderRole" to if (senderProfile.isTeacher) UserProfile.ROLE_TEACHER else UserProfile.ROLE_STUDENT,
+                "content" to "",
+                "timestamp" to now,
+                "attachmentUri" to cleanDownloadUrl,
+                "attachmentUrl" to cleanDownloadUrl,
+                "temporaryDownloadUrl" to cleanDownloadUrl,
+                "attachmentName" to "voice_note_${System.currentTimeMillis()}.m4a",
+                "attachmentType" to "VOICE",
+                "attachmentSize" to durationLabel,
+                "voiceDurationSeconds" to durationSeconds
+            )
+
+            db.collection("threads")
+                .document(threadId)
+                .collection("messages")
+                .document(messageId)
+                .set(msgPayload)
+                .await()
+
+            val updatePayload = mapOf<String, Any>(
+                "lastMessage" to displaySnippet,
+                "lastSenderId" to senderHandle,
+                "lastSenderName" to senderProfile.displayName,
+                "updatedAt" to now
+            )
+            db.collection("threads").document(threadId).update(updatePayload).await()
+
+            val created = ChatMessage(
+                messageId = messageId,
+                threadId = threadId,
+                senderId = senderHandle,
+                senderName = senderProfile.displayName,
+                senderRole = if (senderProfile.isTeacher) UserProfile.ROLE_TEACHER else UserProfile.ROLE_STUDENT,
+                content = "",
+                timestamp = now,
+                attachmentUri = cleanDownloadUrl,
+                attachmentUrl = cleanDownloadUrl,
+                temporaryDownloadUrl = cleanDownloadUrl,
+                attachmentName = "voice_note_${System.currentTimeMillis()}.m4a",
+                attachmentType = "VOICE",
+                attachmentSize = durationLabel,
+                voiceDurationSeconds = durationSeconds
+            )
+            Result.success(created)
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to send voice message: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
      * Adds an existing user contact to a group thread.
      */
     suspend fun addMemberToGroup(

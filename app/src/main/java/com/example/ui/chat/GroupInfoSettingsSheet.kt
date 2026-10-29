@@ -25,7 +25,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AdminPanelSettings
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.MoreVert
@@ -67,7 +66,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.example.ai.AiImageGeneratorEngine
 import com.example.data.MeshChatRepository
 import com.example.model.ConversationThread
 import com.example.model.UserProfile
@@ -112,7 +110,6 @@ fun GroupInfoSettingsSheet(
 
     var isSavingDetails by remember { mutableStateOf(false) }
     var isSavingPermissions by remember { mutableStateOf(false) }
-    var showAiAvatarDialog by remember { mutableStateOf(false) }
     var memberActionMenuFor by remember { mutableStateOf<String?>(null) }
     var memberToRemove by remember { mutableStateOf<String?>(null) }
 
@@ -243,31 +240,6 @@ fun GroupInfoSettingsSheet(
                             color = DavTextSecondary,
                             fontSize = 12.sp
                         )
-
-                        if (isUserAdmin) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Button(
-                                onClick = { showAiAvatarDialog = true },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = DavAccentSky.copy(alpha = 0.15f),
-                                    contentColor = DavBrandRoyalBlue
-                                ),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.testTag("generate_ai_avatar_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.AutoAwesome,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Generate AI Avatar",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
                     }
                 }
             }
@@ -792,25 +764,6 @@ fun GroupInfoSettingsSheet(
                 }
             }
         }
-    }
-
-    // AI Avatar Creator Dialog
-    if (showAiAvatarDialog) {
-        val suggestedAvatarPrompt = "Prestigious academic emblem crest for \"${thread.name}\" ${if (thread.subject.isNotBlank()) "focusing on ${thread.subject}" else ""}, featuring Vedic lamp of learning, knowledge shield, scholastic laurel wreath, high resolution clean vector emblem"
-
-        AiGenerateImageDialog(
-            initialPrompt = suggestedAvatarPrompt,
-            title = "Generate Group Avatar Crest",
-            confirmButtonLabel = "Set as Group Avatar",
-            onDismiss = { showAiAvatarDialog = false },
-            onImageAccepted = { bitmap, _ ->
-                coroutineScope.launch {
-                    val uri = AiImageGeneratorEngine.saveBitmapToLocalCache(context, bitmap, prefix = "group_avatar_${thread.id}")
-                    chatRepository.updateGroupAvatar(thread.id, uri.toString())
-                    Toast.makeText(context, "Group avatar updated!", Toast.LENGTH_SHORT).show()
-                }
-            }
-        )
     }
 
     // Remove Member Confirmation Dialog

@@ -70,4 +70,18 @@ class AdminRepositoryTest : FirestoreEmulatorTestBase() {
         val ips = adminRepository.getAllRegisteredIps().getOrThrow()
         assertFalse(ips.any { it.ip == testIp })
     }
+
+    @Test
+    fun adminCanFactoryResetDatabase(): Unit = runBlocking {
+        val testHandle = "reset_user_${System.currentTimeMillis()}"
+        adminRepository.createUser("Temp User", testHandle, "10.0.0.1")
+
+        val resetResult = adminRepository.factoryResetDatabase()
+        assertTrue("Factory reset failed: ${resetResult.exceptionOrNull()?.message}", resetResult.isSuccess)
+
+        val users = adminRepository.getAllUsers().getOrThrow()
+        // Default admin should exist, temp user should be gone
+        assertTrue(users.any { it.customUserId == "admin" })
+        assertFalse(users.any { it.customUserId == testHandle })
+    }
 }
