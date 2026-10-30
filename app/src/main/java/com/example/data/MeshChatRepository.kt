@@ -408,7 +408,10 @@ class MeshChatRepository(
     suspend fun sendMessage(
         threadId: String,
         senderProfile: UserProfile,
-        content: String
+        content: String,
+        replyToMessageId: String? = null,
+        replyToSenderName: String? = null,
+        replyToContent: String? = null
     ): Result<ChatMessage> = withContext(Dispatchers.IO) {
         try {
             val trimmed = content.trim()
@@ -420,7 +423,7 @@ class MeshChatRepository(
             val senderHandle = senderProfile.customUserId.trim().removePrefix("@").lowercase()
             val messageId = "msg_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}"
 
-            val msgPayload = mapOf(
+            val msgPayload = mutableMapOf<String, Any?>(
                 "messageId" to messageId,
                 "threadId" to threadId,
                 "senderId" to senderHandle,
@@ -429,6 +432,11 @@ class MeshChatRepository(
                 "content" to trimmed,
                 "timestamp" to now
             )
+            if (!replyToMessageId.isNullOrBlank()) {
+                msgPayload["replyToMessageId"] = replyToMessageId
+                msgPayload["replyToSenderName"] = replyToSenderName
+                msgPayload["replyToContent"] = replyToContent
+            }
 
             // Write message subcollection document
             db.collection("threads")
@@ -454,11 +462,139 @@ class MeshChatRepository(
                 senderName = senderProfile.displayName,
                 senderRole = if (senderProfile.isTeacher) UserProfile.ROLE_TEACHER else UserProfile.ROLE_STUDENT,
                 content = trimmed,
-                timestamp = now
+                timestamp = now,
+                replyToMessageId = replyToMessageId,
+                replyToSenderName = replyToSenderName,
+                replyToContent = replyToContent
             )
             Result.success(created)
         } catch (e: Exception) {
             Log.e(tag, "Failed to send message: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Deletes a message either for everyone (tombstoning the message) or for the caller only.
+     */
+    suspend fun deleteMessage(
+        threadId: String,
+        messageId: String,
+        deleteForEveryone: Boolean,
+        userHandle: String
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val cleanHandle = userHandle.trim().removePrefix("@").lowercase()
+            val msgRef = db.collection("threads")
+                .document(threadId)
+                .collection("messages")
+                .document(messageId)
+
+            if (deleteForEveryone) {
+                msgRef.update(
+                    mapOf(
+                        "deletedForEveryone" to true,
+                        "content" to "🚫 This message was deleted",
+                        "attachmentUri" to null,
+                        "attachmentUrl" to null,
+                        "temporaryDownloadUrl" to null,
+                        "attachmentName" to null,
+                        "attachmentType" to null
+                    )
+                ).await()
+            } else {
+                msgRef.update(
+                    "deletedForUserIds", FieldValue.arrayUnion(cleanHandle)
+                ).await()
+            }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to delete message: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Forwards an existing message to another conversation thread.
+     */
+    suspend fun forwardMessage(
+        targetThreadId: String,
+        senderProfile: UserProfile,
+        originalMessage: ChatMessage
+    ): Result<ChatMessage> = withContext(Dispatchers.IO) {
+        try {
+            val now = getCurrentIsoTimestamp()
+            val senderHandle = senderProfile.customUserId.trim().removePrefix("@").lowercase()
+            val messageId = "msg_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}"
+
+            val displaySnippet = if (originalMessage.hasAttachment) {
+                "Forwarded: 📎 ${originalMessage.attachmentName ?: "Attachment"}"
+            } else if (originalMessage.isVoiceMessage) {
+                "Forwarded: 🎤 Voice message"
+            } else {
+                "Forwarded: ${originalMessage.content.take(30)}"
+            }
+
+            val msgPayload = mutableMapOf<String, Any?>(
+                "messageId" to messageId,
+                "threadId" to targetThreadId,
+                "senderId" to senderHandle,
+                "senderName" to senderProfile.displayName,
+                "senderRole" to if (senderProfile.isTeacher) UserProfile.ROLE_TEACHER else UserProfile.ROLE_STUDENT,
+                "content" to originalMessage.content,
+                "timestamp" to now,
+                "isForwarded" to true
+            )
+            if (originalMessage.attachmentUri != null) {
+                msgPayload["attachmentUri"] = originalMessage.attachmentUri
+                msgPayload["attachmentUrl"] = originalMessage.attachmentUrl ?: originalMessage.attachmentUri
+                msgPayload["temporaryDownloadUrl"] = originalMessage.temporaryDownloadUrl ?: originalMessage.attachmentUri
+                msgPayload["attachmentName"] = originalMessage.attachmentName
+                msgPayload["attachmentType"] = originalMessage.attachmentType
+                msgPayload["attachmentSize"] = originalMessage.attachmentSize
+                msgPayload["attachmentKey"] = originalMessage.attachmentKey
+            }
+            if (originalMessage.voiceDurationSeconds > 0) {
+                msgPayload["voiceDurationSeconds"] = originalMessage.voiceDurationSeconds
+            }
+
+            db.collection("threads")
+                .document(targetThreadId)
+                .collection("messages")
+                .document(messageId)
+                .set(msgPayload)
+                .await()
+
+            db.collection("threads").document(targetThreadId).update(
+                mapOf<String, Any>(
+                    "lastMessage" to displaySnippet,
+                    "lastSenderId" to senderHandle,
+                    "lastSenderName" to senderProfile.displayName,
+                    "updatedAt" to now
+                )
+            ).await()
+
+            val created = ChatMessage(
+                messageId = messageId,
+                threadId = targetThreadId,
+                senderId = senderHandle,
+                senderName = senderProfile.displayName,
+                senderRole = if (senderProfile.isTeacher) UserProfile.ROLE_TEACHER else UserProfile.ROLE_STUDENT,
+                content = originalMessage.content,
+                timestamp = now,
+                attachmentUri = originalMessage.attachmentUri,
+                attachmentUrl = originalMessage.attachmentUrl,
+                temporaryDownloadUrl = originalMessage.temporaryDownloadUrl,
+                attachmentName = originalMessage.attachmentName,
+                attachmentType = originalMessage.attachmentType,
+                attachmentSize = originalMessage.attachmentSize,
+                attachmentKey = originalMessage.attachmentKey,
+                voiceDurationSeconds = originalMessage.voiceDurationSeconds,
+                isForwarded = true
+            )
+            Result.success(created)
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to forward message: ${e.message}", e)
             Result.failure(e)
         }
     }

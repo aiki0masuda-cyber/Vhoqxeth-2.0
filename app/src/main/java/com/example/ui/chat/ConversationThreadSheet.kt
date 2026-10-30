@@ -50,15 +50,37 @@ import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.Videocam
+import android.content.ClipData
+import android.content.ClipboardManager
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Reply
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -106,6 +128,7 @@ import com.example.model.ChatMessage
 import com.example.util.FileAttachmentActionManager
 import com.example.model.ConversationThread
 import com.example.model.UserProfile
+import com.example.ui.theme.DavAccentCrimson
 import com.example.ui.theme.DavAccentSky
 import com.example.ui.theme.DavBorder
 import com.example.ui.theme.DavBrandRoyalBlue
@@ -196,10 +219,23 @@ fun ConversationThreadSheet(
         messages + pendingUploads
     }
 
+    // Filter out messages deleted for the current user (while preserving tombstones for messages deleted for everyone)
+    val visibleMessages = remember(combinedMessages, currentHandle) {
+        combinedMessages.filter { !it.isDeletedFor(currentHandle) || it.deletedForEveryone }
+    }
+
+    var activeReplyMessage by remember { mutableStateOf<ChatMessage?>(null) }
+    var selectedActionMessage by remember { mutableStateOf<ChatMessage?>(null) }
+    var showForwardDialog by remember { mutableStateOf(false) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    val allThreadsForForward by remember(currentHandle) {
+        chatRepository.observeThreads(currentHandle)
+    }.collectAsState(initial = emptyList())
+
     // Auto-scroll to bottom on new messages or new upload placeholder
-    LaunchedEffect(combinedMessages.size) {
-        if (combinedMessages.isNotEmpty()) {
-            listState.animateScrollToItem(combinedMessages.size - 1)
+    LaunchedEffect(visibleMessages.size) {
+        if (visibleMessages.isNotEmpty()) {
+            listState.animateScrollToItem(visibleMessages.size - 1)
         }
     }
 
@@ -497,7 +533,7 @@ fun ConversationThreadSheet(
                 }
             }
 
-            items(combinedMessages, key = { it.messageId }) { msg ->
+            items(visibleMessages, key = { it.messageId }) { msg ->
                 val isMe = msg.senderId.lowercase() == currentHandle
                 if (msg.isUploadingPlaceholder) {
                     Box(
@@ -568,6 +604,11 @@ fun ConversationThreadSheet(
                                 CatboxUploadManager.applyBypassMirror(it)
                             }
                             audioVoiceManager.togglePlay(msg.messageId, audioUrl)
+                        },
+                        onLongClick = {
+                            if (!msg.deletedForEveryone) {
+                                selectedActionMessage = msg
+                            }
                         }
                     )
                 }
@@ -795,6 +836,58 @@ fun ConversationThreadSheet(
                 }
             }
         } else {
+            // Quoted Reply Preview Bar
+            if (activeReplyMessage != null) {
+                val rep = activeReplyMessage!!
+                Surface(
+                    color = DavSurfaceElevated,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 2.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, DavBorder)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(3.dp)
+                                .height(30.dp)
+                                .background(DavBrandRoyalBlue, RoundedCornerShape(2.dp))
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Replying to ${rep.senderName}",
+                                color = DavBrandRoyalBlue,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = rep.content.ifBlank { rep.attachmentName ?: "Attachment" },
+                                color = DavTextSecondary,
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        IconButton(
+                            onClick = { activeReplyMessage = null },
+                            modifier = Modifier.size(26.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Cancel reply",
+                                tint = DavTextMuted,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
             // Bottom Message & Attachment Composer
             Row(
                 modifier = Modifier
@@ -861,8 +954,10 @@ fun ConversationThreadSheet(
                             if (!isSending) {
                                 val text = inputMessage.trim()
                                 val att = pendingAttachment
+                                val replySnapshot = activeReplyMessage
                                 inputMessage = ""
                                 pendingAttachment = null
+                                activeReplyMessage = null
 
                                 if (att != null) {
                                     val tempId = "upload_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}"
@@ -927,7 +1022,14 @@ fun ConversationThreadSheet(
                                 } else {
                                     isSending = true
                                     coroutineScope.launch {
-                                        chatRepository.sendMessage(currentThread.id, currentUser, text)
+                                        chatRepository.sendMessage(
+                                            threadId = currentThread.id,
+                                            senderProfile = currentUser,
+                                            content = text,
+                                            replyToMessageId = replySnapshot?.messageId,
+                                            replyToSenderName = replySnapshot?.senderName,
+                                            replyToContent = replySnapshot?.content?.ifBlank { replySnapshot.attachmentName }
+                                        )
                                         isSending = false
                                     }
                                 }
@@ -1034,8 +1136,295 @@ fun ConversationThreadSheet(
             onDismiss = { showCloudflareWorkerSettings = false }
         )
     }
+
+    // Modal Bottom Sheet: Message Actions (Reply, Forward, Copy, Delete)
+    val actionTarget = selectedActionMessage
+    if (actionTarget != null && !showDeleteDialog && !showForwardDialog) {
+        ModalBottomSheet(
+            onDismissRequest = { selectedActionMessage = null },
+            containerColor = Color.White
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 12.dp)
+                    .navigationBarsPadding()
+            ) {
+                Text(
+                    text = "Message Options",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = DavTextPrimary,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+
+                // Reply action
+                ListItem(
+                    headlineContent = { Text("Reply", color = DavTextPrimary, fontWeight = FontWeight.Medium) },
+                    leadingContent = {
+                        Icon(Icons.Default.Reply, contentDescription = "Reply", tint = DavBrandRoyalBlue)
+                    },
+                    colors = ListItemDefaults.colors(containerColor = Color.White),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable {
+                            activeReplyMessage = actionTarget
+                            selectedActionMessage = null
+                        }
+                        .testTag("action_reply_message")
+                )
+
+                // Forward action
+                ListItem(
+                    headlineContent = { Text("Forward", color = DavTextPrimary, fontWeight = FontWeight.Medium) },
+                    leadingContent = {
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Forward", tint = DavBrandRoyalBlue)
+                    },
+                    colors = ListItemDefaults.colors(containerColor = Color.White),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable {
+                            showForwardDialog = true
+                        }
+                        .testTag("action_forward_message")
+                )
+
+                // Copy Text action (if text exists)
+                if (actionTarget.content.isNotBlank()) {
+                    ListItem(
+                        headlineContent = { Text("Copy Text", color = DavTextPrimary, fontWeight = FontWeight.Medium) },
+                        leadingContent = {
+                            Icon(Icons.Default.ContentCopy, contentDescription = "Copy", tint = DavBrandRoyalBlue)
+                        },
+                        colors = ListItemDefaults.colors(containerColor = Color.White),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                val clip = ClipData.newPlainText("Chat Message", actionTarget.content)
+                                clipboard.setPrimaryClip(clip)
+                                Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
+                                selectedActionMessage = null
+                            }
+                            .testTag("action_copy_message")
+                    )
+                }
+
+                // Delete action
+                ListItem(
+                    headlineContent = { Text("Delete", color = DavAccentCrimson, fontWeight = FontWeight.Medium) },
+                    leadingContent = {
+                        Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", tint = DavAccentCrimson)
+                    },
+                    colors = ListItemDefaults.colors(containerColor = Color.White),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable {
+                            showDeleteDialog = true
+                        }
+                        .testTag("action_delete_message")
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+        }
+    }
+
+    // Modal Dialog: Delete Confirmation
+    if (showDeleteDialog && selectedActionMessage != null) {
+        val targetMsg = selectedActionMessage!!
+        val isAuthor = targetMsg.senderId.lowercase() == currentHandle
+        val canDeleteEveryone = isAuthor || currentThread.isAdmin(currentHandle) || currentUser.isAdmin
+
+        AlertDialog(
+            onDismissRequest = {
+                showDeleteDialog = false
+                selectedActionMessage = null
+            },
+            title = {
+                Text(
+                    text = "Delete Message?",
+                    color = DavTextPrimary,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = if (canDeleteEveryone)
+                        "Do you want to delete this message for everyone or only for yourself?"
+                    else
+                        "Do you want to delete this message for yourself? It will remain visible to other participants in this chat.",
+                    color = DavTextSecondary,
+                    fontSize = 14.sp
+                )
+            },
+            confirmButton = {
+                if (canDeleteEveryone) {
+                    Button(
+                        onClick = {
+                            coroutineScope.launch {
+                                chatRepository.deleteMessage(
+                                    threadId = currentThread.id,
+                                    messageId = targetMsg.messageId,
+                                    deleteForEveryone = true,
+                                    userHandle = currentHandle
+                                )
+                                showDeleteDialog = false
+                                selectedActionMessage = null
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = DavAccentCrimson),
+                        modifier = Modifier.testTag("confirm_delete_for_everyone_button")
+                    ) {
+                        Text("Delete for everyone", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
+            },
+            dismissButton = {
+                Row {
+                    OutlinedButton(
+                        onClick = {
+                            coroutineScope.launch {
+                                chatRepository.deleteMessage(
+                                    threadId = currentThread.id,
+                                    messageId = targetMsg.messageId,
+                                    deleteForEveryone = false,
+                                    userHandle = currentHandle
+                                )
+                                showDeleteDialog = false
+                                selectedActionMessage = null
+                            }
+                        },
+                        modifier = Modifier.testTag("confirm_delete_for_me_button")
+                    ) {
+                        Text("Delete for me", color = DavTextPrimary)
+                    }
+                    Spacer(modifier = Modifier.width(6.dp))
+                    TextButton(
+                        onClick = {
+                            showDeleteDialog = false
+                            selectedActionMessage = null
+                        }
+                    ) {
+                        Text("Cancel", color = DavTextMuted)
+                    }
+                }
+            },
+            containerColor = Color.White
+        )
+    }
+
+    // Modal Dialog: Forward Message Destination Picker
+    if (showForwardDialog && selectedActionMessage != null) {
+        val targetMsg = selectedActionMessage!!
+        val destinationThreads = allThreadsForForward.filter { it.id != currentThread.id }
+
+        AlertDialog(
+            onDismissRequest = {
+                showForwardDialog = false
+                selectedActionMessage = null
+            },
+            title = {
+                Text(
+                    text = "Forward Message",
+                    color = DavTextPrimary,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                if (destinationThreads.isEmpty()) {
+                    Text(
+                        text = "No other active chats found. Create or join another chat first to forward messages.",
+                        color = DavTextSecondary,
+                        fontSize = 14.sp
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 280.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        items(destinationThreads, key = { it.id }) { destThread ->
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = DavSurfaceElevated,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, DavBorder),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        coroutineScope.launch {
+                                            chatRepository.forwardMessage(
+                                                targetThreadId = destThread.id,
+                                                senderProfile = currentUser,
+                                                originalMessage = targetMsg
+                                            )
+                                            Toast.makeText(
+                                                context,
+                                                "Forwarded to ${destThread.name}",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                            showForwardDialog = false
+                                            selectedActionMessage = null
+                                        }
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = if (destThread.isGroup) Icons.Default.Groups else Icons.Default.Shield,
+                                        contentDescription = null,
+                                        tint = DavBrandRoyalBlue,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = destThread.name,
+                                            color = DavTextPrimary,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        if (destThread.lastMessage.isNotBlank()) {
+                                            Text(
+                                                text = destThread.lastMessage,
+                                                color = DavTextMuted,
+                                                fontSize = 11.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                        contentDescription = "Forward to chat",
+                                        tint = DavAccentSky,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showForwardDialog = false
+                        selectedActionMessage = null
+                    }
+                ) {
+                    Text("Close", color = DavTextMuted)
+                }
+            },
+            containerColor = Color.White
+        )
+    }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MessageBubble(
     message: ChatMessage,
@@ -1043,13 +1432,47 @@ private fun MessageBubble(
     context: Context,
     isPlayingVoice: Boolean = false,
     playbackProgress: Float = 0f,
-    onTogglePlayVoice: () -> Unit = {}
+    onTogglePlayVoice: () -> Unit = {},
+    onLongClick: () -> Unit = {}
 ) {
     val bubbleColor = if (isMe) DavBrandRoyalBlue else Color.White
     val textColor = if (isMe) Color.White else DavTextPrimary
     val alignment = if (isMe) Alignment.End else Alignment.Start
 
     val coroutineScope = rememberCoroutineScope()
+
+    // If message is deleted for everyone, show standard tombstone badge
+    if (message.deletedForEveryone) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = alignment
+        ) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(DavSurfaceElevated)
+                    .border(1.dp, DavBorder, RoundedCornerShape(12.dp))
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Block,
+                        contentDescription = null,
+                        tint = DavTextMuted,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "This message was deleted",
+                        color = DavTextMuted,
+                        fontSize = 13.sp,
+                        fontStyle = FontStyle.Italic
+                    )
+                }
+            }
+        }
+        return
+    }
 
     // Direct CDN URL from Catbox or local fallback (with ISP bypass mirror)
     val rawMediaUrl = message.resolvedAttachmentUrl?.ifBlank { null } ?: message.attachmentUri ?: ""
@@ -1115,9 +1538,77 @@ private fun MessageBubble(
                         bottomEnd = if (isMe) 4.dp else 16.dp
                     )
                 )
+                .combinedClickable(
+                    onClick = {},
+                    onLongClick = onLongClick
+                )
                 .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                // Forwarded header badge
+                if (message.isForwarded) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(bottom = 2.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = "Forwarded",
+                            tint = if (isMe) Color.White.copy(alpha = 0.85f) else DavBrandRoyalBlue,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Forwarded",
+                            color = if (isMe) Color.White.copy(alpha = 0.85f) else DavBrandRoyalBlue,
+                            fontSize = 11.sp,
+                            fontStyle = FontStyle.Italic,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+
+                // Quoted reply snippet card
+                if (message.isQuotedReply) {
+                    Surface(
+                        color = if (isMe) Color.White.copy(alpha = 0.18f) else DavSurfaceElevated,
+                        shape = RoundedCornerShape(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(IntrinsicSize.Min)
+                                .padding(end = 8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .width(3.dp)
+                                    .fillMaxHeight()
+                                    .background(if (isMe) Color.White else DavBrandRoyalBlue)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                                Text(
+                                    text = message.replyToSenderName ?: "Original message",
+                                    color = if (isMe) Color.White else DavBrandRoyalBlue,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = message.replyToContent ?: "",
+                                    color = if (isMe) Color.White.copy(alpha = 0.9f) else DavTextSecondary,
+                                    fontSize = 12.sp,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+
                 // If message is a dedicated Voice Note
                 if (message.isVoiceMessage) {
                     Row(

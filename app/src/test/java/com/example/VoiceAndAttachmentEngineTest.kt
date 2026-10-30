@@ -198,4 +198,61 @@ class VoiceAndAttachmentEngineTest {
         assertEquals("01:05", AudioVoiceManager.formatDuration(65))
         assertEquals("02:30", AudioVoiceManager.formatDuration(150))
     }
+
+    @Test
+    fun testChatMessageControlsReplyForwardAndDelete() {
+        // 1. Reply test
+        val original = ChatMessage(
+            messageId = "msg_orig_1",
+            senderId = "teacher_smith",
+            senderName = "Dr. Smith",
+            content = "Please submit chapter 4 notes by Friday."
+        )
+        val reply = ChatMessage(
+            messageId = "msg_reply_2",
+            senderId = "student_alex",
+            senderName = "Alex",
+            content = "Submitted via portal!",
+            replyToMessageId = original.messageId,
+            replyToSenderName = original.senderName,
+            replyToContent = original.content
+        )
+        assertTrue(reply.isQuotedReply)
+        assertEquals("msg_orig_1", reply.replyToMessageId)
+        assertEquals("Dr. Smith", reply.replyToSenderName)
+        assertEquals("Please submit chapter 4 notes by Friday.", reply.replyToContent)
+        assertFalse(original.isQuotedReply)
+
+        // 2. Forward test
+        val forwarded = ChatMessage(
+            messageId = "msg_fwd_3",
+            senderId = "student_alex",
+            content = "Exam schedule details",
+            isForwarded = true
+        )
+        assertTrue(forwarded.isForwarded)
+        assertFalse(original.isForwarded)
+
+        // 3. Delete for everyone test
+        val deletedForEveryone = ChatMessage(
+            messageId = "msg_del_all",
+            senderId = "teacher_smith",
+            deletedForEveryone = true,
+            content = "🚫 This message was deleted"
+        )
+        assertTrue(deletedForEveryone.deletedForEveryone)
+
+        // 4. Delete for me test
+        val deletedForMe = ChatMessage(
+            messageId = "msg_del_me",
+            senderId = "student_bob",
+            deletedForUserIds = listOf("student_alex", "student_clara")
+        )
+        assertTrue(deletedForMe.isDeletedFor("student_alex"))
+        assertTrue(deletedForMe.isDeletedFor("@student_alex"))
+        assertTrue(deletedForMe.isDeletedFor("student_clara"))
+        assertFalse(deletedForMe.isDeletedFor("student_bob"))
+        assertFalse(deletedForMe.isDeletedFor("teacher_smith"))
+    }
 }
+

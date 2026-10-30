@@ -1,83 +1,146 @@
-# Implementation Plan - Voice Messaging, Factory Database Reset & Minimalist Light Admin UI
+# High-Contrast Light Theme & Chat Message Controls (Reply, Forward, Delete)
 
-Replace the SiliconFlow AI text/image generation pipelines with a dedicated audio voice messaging system, provide a complete factory database reset action in the Admin portal, and redesign the entire Admin UI into a clean, minimalist light-themed layout.
-
----
-
-## User Requirements & Preferences
-1. **Voice Messaging**:
-   - Completely remove the AI image and text generation tools (dialogs, slash commands, engines, and buttons).
-   - Add a voice message option in chat (record audio and send voice notes).
-   - Voice player UI appears only on messages that are voice notes ("not every message contains it, only if needed").
-2. **Admin Database Reset**:
-   - Add a full factory reset button in the Admin portal that clears all messages, custom channels, and users (with confirmation dialog and status indication).
-3. **Admin UI Redesign**:
-   - Redesign the entire Admin interface with a minimalist, crisp white card aesthetic, soft slate borders, subtle elevation, and clean typography.
+Fix all low-contrast/invisible text in the light UI theme by correcting font and container color mappings, and implement complete native message controls—replying with quoted message headers, forwarding to other chat threads with a "Forwarded" badge, and deleting messages either for everyone or for oneself via a long-press action menu.
 
 ---
 
-## Proposed Changes
+## User Review & Critical Decisions
 
-### 1. Chat Message Model & Voice Audio Infrastructure
-#### `app/src/main/java/com/example/model/ChatMessage.kt`
-- Add `voiceDurationSeconds: Int = 0` to `ChatMessage` (with Firestore default).
-- Support `attachmentType == "VOICE"` for audio notes.
-- Include helper properties `isVoiceMessage: Boolean get() = attachmentType == "VOICE" || ...`.
-
-#### `app/src/main/java/com/example/util/AudioVoiceManager.kt` *(New)*
-- Manage native audio recording via `MediaRecorder` (`MPEG_4` / `AAC`) to temporary cache files.
-- Track recording elapsed duration with timer flow.
-- Manage native audio playback via `MediaPlayer` with play/pause state and playback progress.
-- Clean up resources gracefully on disposal.
-
-### 2. Chat UI: Voice Messaging & Removal of AI Generation
-#### `app/src/main/java/com/example/ui/chat/ConversationThreadSheet.kt` & `ChatItemRow.kt`
-- Remove all AI generation buttons, dialog triggers (`AiGenerateImageDialog`), and `/ai` or `/imagine` slash command handling.
-- In the chat bottom bar:
-  - Add audio recording button / recorder state (record timer, cancel, send).
-  - Upload recorded `.m4a` voice file via `CatboxUploadManager` (or existing upload pipeline) and post as a voice chat message.
-- In chat message bubbles (`ChatItemRow.kt` / `ConversationThreadSheet.kt`):
-  - Render an interactive voice message player for messages with `attachmentType == "VOICE"` (play/pause toggle, audio waveform bars, progress indicator, and timestamp duration).
-  - Regular text and file messages render cleanly without any voice widgets.
-
-#### AI File Cleanup / Deprecation
-- Remove or bypass `AiGenerateImageDialog.kt`, and remove AI generation calls from chat view models.
-
-### 3. Factory Database Reset in Admin Repository
-#### `app/src/main/java/com/example/data/AdminRepository.kt` & `MeshChatRepository.kt`
-- Add `factoryResetDatabase()`:
-  - Deletes all messages across all conversation threads in `/threads/{threadId}/messages`.
-  - Clears all `/threads` documents and resets default channels (`general`, `announcements`, `study-circles`).
-  - Clears all custom `/users` documents, re-seeding default administrative/faculty accounts.
-  - Clears registered IP entries in `/registered_ips`.
-  - Clears local cache/state to ensure instant UI sync.
-
-### 4. Admin Portal Screen Redesign: Minimalist Light Theme
-#### `app/src/main/java/com/example/ui/admin/AdminPortalScreen.kt`
-- Redesign from dark theme to an elegant, minimalist light theme:
-  - Background: Crisp off-white (`#F8FAFC`).
-  - Cards: Pure white (`#FFFFFF`) with subtle slate borders (`#E2E8F0`), 12dp rounded corners, and soft shadows.
-  - Text & Icons: Deep slate primary (`#0F172A`), muted secondary (`#64748B`), royal blue brand accent (`#2563EB`).
-  - Header & Tabs: Minimal tab row with pill indicators for Users, Network/IPs, Self-Healing, and System Maintenance.
-- Add a prominent **Database Maintenance & Factory Reset** section:
-  - "Reset Database to Factory Defaults" card with a warning badge, two-step confirmation dialog ("Type RESET or confirm"), and clear progress indicators.
-  - Quick action buttons to wipe message threads, reset IP mappings, and restore defaults.
-- Retain all core administrative features (user management, role toggles, IP whitelisting, self-healing logs) within the clean, uncluttered light layout.
+> [!IMPORTANT]
+> The following key decisions have been aligned based on your clarifying answers:
+> - **Deletion Scope**: Messages can be deleted either for **Everyone** (tombstoned for all participants) or **For Me** (hidden exclusively on your device/account).
+> - **Action Trigger**: Actions are triggered via **long-press** on any chat message bubble to display a clean Material 3 modal sheet with Reply, Forward, Copy, and Delete actions.
+> - **Forwarded Presentation**: Forwarded messages in recipient chats feature a dedicated **Forwarded** badge icon above the message body while preserving content and attachments.
 
 ---
 
-## Verification Plan
+## 1. Overview & Core Concept
 
-### Automated Tests
-- Run unit tests: `gradle :app:testDebugUnitTest`.
-- Update or adapt unit tests in `app/src/test/` to reflect removal of AI generation and addition of voice message model properties and factory reset methods.
+1. **Light UI Contrast Fix**:
+   - Resolve the issue where input fields and dialog text were invisible due to legacy dark-theme tokens (such as `VhoqxethSlate900` being mapped to an elevated light surface `#F1F5F9` instead of dark slate `#0F172A`).
+   - Standardize all text inputs, dialog labels, profile editors, and message elements to high-contrast deep slate (`#0F172A`) for primary text, slate-600 (`#475569`) for secondary text, and slate-400/500 (`#64748B`) for placeholders.
 
-### Manual / Integration Verification Steps
-1. **Compilation**: Run `compile_applet` to verify clean build without deprecation errors or missing imports.
-2. **Chat & Voice Message**:
-   - Verify the AI sparkle button and generation dialogs are completely gone.
-   - Record a voice message in chat, send it, and verify the audio note card appears with duration and play button.
-   - Verify regular text messages display normally without voice UI components.
-3. **Admin Portal**:
-   - Open Admin Portal and verify the clean, minimalist white card styling and slate borders.
-   - Tap "Factory Reset Database", confirm the dialog, and verify threads/messages/users reset cleanly.
+2. **Native Message Controls**:
+   - **Long-Press Menu**: Long-pressing on any message bubble opens a bottom sheet offering:
+     - **↩ Reply**: Pins a quoted preview bar above the composer with original sender and text snippet.
+     - **↗ Forward**: Opens a dialog to pick any active chat channel or direct contact, delivering the message with a "Forwarded" indicator.
+     - **⎘ Copy Text**: Copies text content to Android clipboard with a confirmation snackbar/toast.
+     - **🗑 Delete**: Presents options to "Delete for everyone" (if sender or admin) or "Delete for me".
+
+---
+
+## 2. User Experience & Visual Design
+
+### Long-Press Action Sheet & Reply Workflow
+```
+┌────────────────────────────────────────────────────────┐
+│ Message Bubble (Long-Pressed)                          │
+│ "Please review chapter 4 for tomorrow's quiz."         │
+└────────────────────────────────────────────────────────┘
+                           │ (Opens Action Sheet)
+                           ▼
+┌────────────────────────────────────────────────────────┐
+│  Message Actions                                       │
+│  ───────────────────────────────────────────────────   │
+│  [↩ Reply]      Quote message in composer              │
+│  [↗ Forward]    Send to another circle or contact      │
+│  [⎘ Copy]       Copy message text to clipboard         │
+│  [🗑 Delete]     Delete for everyone or for myself      │
+└────────────────────────────────────────────────────────┘
+```
+
+### Quoted Reply in Composer
+```
+┌────────────────────────────────────────────────────────┐
+│  ↩ Replying to Rohan Sharma                        [✕] │
+│  "Please review chapter 4 for tomorrow's quiz."        │
+├────────────────────────────────────────────────────────┤
+│ [📎]  Type a message...                           [Send│
+└────────────────────────────────────────────────────────┘
+```
+
+### Forwarded Message in Destination Chat
+```
+┌──────────────────────────────────────────────┐
+│  ↗ Forwarded                                 │
+│  Please review chapter 4 for tomorrow's quiz.│
+│                                      10:24 AM│
+└──────────────────────────────────────────────┘
+```
+
+---
+
+## 3. Key Technical Architecture & Strategy
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Jetpack Compose UI Layer                                                │
+│                                                                         │
+│  • ConversationThreadSheet.kt                                           │
+│    - combinedClickable / onLongClick on MessageBubble                   │
+│    - MessageActionBottomSheet (Reply, Forward, Copy, Delete)            │
+│    - Active QuotedReplyPreviewBar above input composer                  │
+│    - ForwardThreadPickerDialog (Select destination circle/contact)      │
+│                                                                         │
+│  • Color.kt & Theme.kt                                                  │
+│    - Fix VhoqxethSlate900 -> DavTextPrimary (#0F172A)                   │
+│    - Audit OutlinedTextField text & placeholder colors in all dialogs   │
+└─────────────────────────────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Data & Firestore Layer                                                  │
+│                                                                         │
+│  • ChatMessage.kt                                                       │
+│    - replyToMessageId, replyToSenderName, replyToContent                │
+│    - isForwarded: Boolean                                               │
+│    - deletedForEveryone: Boolean, deletedForUserIds: List<String>       │
+│                                                                         │
+│  • MeshChatRepository.kt                                                │
+│    - sendMessage(..., replyTo, isForwarded)                             │
+│    - deleteMessage(threadId, messageId, deleteForEveryone, userHandle)  │
+│    - forwardMessage(targetThreadId, senderProfile, message)             │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 4. Implementation Steps
+
+1. **Fix Color Tokens & Contrast**:
+   - In `Color.kt`, redefine `VhoqxethSlate900` to `DavTextPrimary` (`#0F172A`).
+   - Audit text fields in `OptionalProfileSetupSheet.kt`, `ProfileEditorDialog.kt`, `ChangePasswordDialog.kt`, `AddContactDialog.kt`, and `CreateStudyCircleDialog.kt` to ensure dark text on light containers.
+
+2. **Update `ChatMessage` Model**:
+   - Add reply fields (`replyToMessageId`, `replyToSenderName`, `replyToContent`).
+   - Add forward field (`isForwarded: Boolean = false`).
+   - Add delete fields (`deletedForEveryone: Boolean = false`, `deletedForUserIds: List<String> = emptyList()`).
+   - Add helper `fun isDeletedFor(userHandle: String): Boolean`.
+
+3. **Extend `MeshChatRepository`**:
+   - Support reply metadata and `isForwarded` flag in `sendMessage`.
+   - Implement `deleteMessage(threadId, messageId, deleteForEveryone, userHandle)` in Firestore.
+   - Implement `forwardMessage(targetThreadId, senderProfile, originalMessage)`.
+   - Update `observeMessages` to filter out messages where `isDeletedFor(currentUserId)` is true, or display tombstone if deleted for everyone.
+
+4. **Integrate Chat UI**:
+   - In `ConversationThreadSheet.kt`, attach `Modifier.combinedClickable(onLongClick = ...)` to message cards.
+   - Build `MessageActionsBottomSheet` with Reply, Forward, Copy, and Delete actions.
+   - Build `ForwardMessageDialog` listing recent circles and contacts.
+   - Render quoted reply cards in messages and in the composer input bar.
+   - Render the `Forwarded` badge above forwarded messages.
+
+---
+
+## 5. Verification Plan
+
+1. **Compilation**: Run `compile_applet` to verify build integrity.
+2. **Contrast & Theme Testing**:
+   - Check profile edit fields, password change dialogs, and text inputs to ensure text is dark, crisp, and 100% visible.
+3. **Message Controls Testing**:
+   - Long-press a message and verify the action bottom sheet appears.
+   - Test **Reply**: Composer shows quoted bar, and sent message shows quoted bubble header.
+   - Test **Forward**: Choose destination thread and verify message arrives with "Forwarded" badge.
+   - Test **Delete for Myself**: Message disappears from local user view.
+   - Test **Delete for Everyone**: Message reflects deletion tombstone for all participants.
+4. **Unit Tests**: Run `gradle :app:testDebugUnitTest` to verify data models and repository methods.

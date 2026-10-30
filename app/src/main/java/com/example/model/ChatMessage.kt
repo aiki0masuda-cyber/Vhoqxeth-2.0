@@ -21,11 +21,26 @@ data class ChatMessage(
     val attachmentType: String? = null,       // "IMAGE", "PDF", "VIDEO", "DOC", "FILE"
     val attachmentSize: String? = null,
     val isUploadingPlaceholder: Boolean = false, // True while streaming binary to pre-signed URL
-    val uploadProgress: Float = 0f,           // 0.0f to 1.0f progress for active placeholder
-    val voiceDurationSeconds: Int = 0         // Duration in seconds if audio voice message
+    val uploadProgress: Float = 0f,           // Progress from 0f to 1f for uploads
+    val voiceDurationSeconds: Int = 0,        // Duration in seconds if audio voice message
+    val replyToMessageId: String? = null,     // Quoted reply source message ID
+    val replyToSenderName: String? = null,    // Quoted reply sender display name
+    val replyToContent: String? = null,       // Quoted reply content preview
+    val isForwarded: Boolean = false,         // True if message was forwarded
+    val deletedForEveryone: Boolean = false,  // True if revoked/deleted for everyone
+    val deletedForUserIds: List<String> = emptyList() // List of user handles who deleted message for themselves
 ) {
     val isFaculty: Boolean
         get() = senderRole.equals("TEACHER", ignoreCase = true)
+
+    val isQuotedReply: Boolean
+        get() = !replyToContent.isNullOrBlank()
+
+    fun isDeletedFor(userHandle: String): Boolean {
+        if (deletedForEveryone) return true
+        val clean = userHandle.trim().removePrefix("@").lowercase()
+        return deletedForUserIds.any { it.trim().removePrefix("@").lowercase() == clean }
+    }
 
     val isVoiceMessage: Boolean
         get() = attachmentType.equals("VOICE", ignoreCase = true) ||

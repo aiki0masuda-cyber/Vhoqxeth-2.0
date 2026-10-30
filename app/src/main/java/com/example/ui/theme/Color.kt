@@ -52,7 +52,7 @@ val VhoqxethTextMuted = DavTextMuted
 
 val VhoqxethOnlineGreen = DavAccentEmerald
 val VhoqxethUnreadBadge = DavAccentSky
-val VhoqxethSlate900 = DavSurfaceElevated
+val VhoqxethSlate900 = DavTextPrimary           // High-contrast deep slate-900 for dark text
 val VhoqxethSlate600 = DavTextSecondary
 
 // Backward compatibility alias

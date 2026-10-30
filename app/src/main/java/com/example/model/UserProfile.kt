@@ -33,6 +33,9 @@ data class UserProfile(
     val isStudent: Boolean
         get() = !isTeacher
 
+    val isAdmin: Boolean
+        get() = customUserId.trim().removePrefix("@").equals("admin", ignoreCase = true)
+
     /**
      * Computed scholastic badge label:
      * - Teachers: "Faculty • Department" or "Designation"
